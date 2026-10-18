@@ -26,7 +26,7 @@
 | ST-09 | CI avoidance | GitLab CI/jobs/runners disabledのread-only project settings確認。CI file, pipeline trigger, runner commandを追加しない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 
-ST-01〜ST-08は必要に応じてローカルYAML/Compose/Helm toolingを使う。CIは使わない。実環境が未確定のうちはmanifestなしなのでST-01〜ST-08は実施できない。
+秘密を含まないhost-independent templateはsite inventory前にST-01〜ST-06/09/10を静的検証できる。site-specific endpoint/resource/volume valuesの確認とST-08は該当hostを確認してから行う。GitLab CIは使わず、local repositoryが利用可能になってからローカルtoolingで実施する。
 
 ## 3. 配備 smoke test cases
 
@@ -36,7 +36,7 @@ ST-01〜ST-08は必要に応じてローカルYAML/Compose/Helm toolingを使う
 |---|---|---|
 | DP-01 | process/container status | APIとSyncが起動。予期せぬrestart loopなし |
 | DP-02 | API health | internal endpoint /health が成功 |
-| DP-03 | Sync health | internal 8081 health endpoint が成功。containerから外へ公開しない |
+| DP-03 | Sync health | 選定manifestで明示したOP_HTTP_PORTの /health が成功。汎用container defaultは8080、公式Helm chartのSync port defaultは8081。containerから外へ公開しない |
 | DP-04 | Auth | local APIへ既存Bearer tokenでGET /v1/vaults。2xx。token文字列は画面/ログに表示しない |
 | DP-05 | Vault identity | レスポンスのVault ID/nameだけを許可済み値と比較。item contentsは取らない |
 | DP-06 | App routing | site-localアプリのhost設定がsite-local API endpointを指す |
@@ -74,9 +74,9 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 ## 6. テスト設計レビュー
 
 ゼロベースレビューの結果:
-- static, deployment, 3-site runtime testを分離した。
+- static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
 - GitLab pipeline/runnerを使わない。
 - API healthのみで認証成功と誤認せず、Sync health・Vault identity・local routingも別項目にした。
-- 実local repo/hostが開けない場合を未実施として記録し、結果を捏造しない。
+- local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
