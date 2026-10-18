@@ -14,7 +14,8 @@
 - 3拠点とも同じVaultを同期する。アプリが通常使う接続先は各拠点のローカルConnect APIとする。
 - 各拠点内ではAPIとSyncが同じ暗号化データ領域を共有する。拠点間では共有しない。
 - 設計・実装は既存GitLab projectに追加する。既存READMEは雛形であり、上書きしない。
-- CIの目標構成は3台のsite専用self-hosted runnerであり、shared runnerは使用しない。site別jobは `appv4`、`main-ubutsu2`、`oyama-wsl` のrunner tagで対応する拠点だけに割り当てる。CI/Runnerの有効化・タグ付け・権限変更は別担当が行う。
+- PP2本体はProject ID `87779895` `ktakamuki_wsl/pc-platform/pc_platform2`。Hub localstdio downstreamとして動く1Password adapterをこのrepositoryのplugin分離moduleへ追加し、PP2 coreは変更しない。
+- CIの目標構成は3台のsite専用self-hosted runnerであり、shared runnerは使用しない。site別jobは `appv4`、`main-ubutsu2`、`oyama-wsl` のrunner tagで対応する拠点だけに割り当てる。CI/Runnerの有効化・タグ付け・権限変更は別担当が行う。既存のGitLab保護設定と本人指示に従い、manual/protected gateを新しい必須条件として追加しない。
 
 ## 3. 受け入れ条件
 
@@ -26,13 +27,14 @@
 6. APIは未認証で外部公開しない。各拠点で接続元を限定し、信頼ネットワーク外をまたぐ場合はTLSを使う。
 7. APPv3には配備しない。APPv4とAPPv3を識別できるホスト情報を確認してから変更する。
 8. 実配備と実動作を拠点別に検証し、単体/static test、配備、3拠点実動作を別々に記録する。
-9. PP2のアダプターがMCP JSON-RPC `tools/list` で許可ツールを確認し、allow-list済みのread-only toolに `tools/call` を使う。tool名/argument schema、protocol error、`isError`、構造化/非構造化結果を取り扱い、secret値や結果本文をログへ残さない。各siteのplugin MCP接続がsite-local Connect経路に結び付くことを実環境で確認し、中央または別siteへの経路へ黙って迂回しない。実際のplugin接続を作成・変更せず、未知のtool名やtransportを推測しない。
-10. CIのsite jobは専用の3台のself-hosted runnerへtagで固定し、shared runnerにfallbackしない。site単位のdeployはmanual/protected gateを持つ。実runnerのtag/project access設定を確認するまでは対象jobを実行しない。
+9. PP2 Hub（Project ID `87779895`）は、このrepositoryのplugin分離moduleをlocalstdio MCP downstreamとして起動する。PP2 coreは変更しない。Hubの既存外部認証と下流processの既存OS実行identity/permissionsを使い、独自認証・承認機構や権限昇格は追加しない。pluginはMCP `tools/list` で実在tool/schemaを確認し、許可されたread-only toolをJSON-RPC `tools/call` で呼ぶ。成功結果・protocol/tool error・通知を含むHub/Chat向けMCP出力は、定義済みの公開metadataだけとし、secret値、credential file本文、Bearer token、secret-bearing resultを含めない。秘密値の供給が必要な場合は明示的に許可されたconsumer内の別経路で扱い、値をChatへ返すMCP toolは作らない。各siteのpluginはそのsiteに指定されたConnect経路を検証し、指定なしに他siteへ切り替えない。本人が明示的に経路変更を指示した場合は、その指定に従い記録/レビューする。具体的なtool schema/transportは実装前に確認し、推測しない。
+10. CIのsite jobは専用の3台のself-hosted runnerへtagで固定し、shared runnerにfallbackしない。既存のGitLab保護設定と本人指示に従い、manual/protected gateを新設必須化しない。現runnerのtag/project access設定が実行可能状態と確認され、本人指示が許すまで対象jobを起動しない。
 
 ## 4. セキュリティ・変更の境界
 
 - `1password-credentials.json` とConnect API tokenはsecretであり、Git管理しない。値の取得、表示、ログ出力、共有はしない。
 - 既存CredentialMCP登録・既存トークンを使う前提。新しい登録/トークン発行、Vault grant変更、既存credentialの常用先変更、credential配布は本段階で実行しない。必要になった場合は対象操作と拠点を親へ示してから安全なhandoffを行う。
+- PP2 Hubからのplugin呼び出しはlocalstdioとし、Hubの既存外部認証・設定済みOS実行権限の境界で動作する。独自認証/承認、権限昇格を追加しない。MCP success/error/notificationを含む出力は公開metadataのみ。secret値やcredential/tokenをChatへ返すtoolを設けず、秘密供給は許可consumerの内部だけで扱う。
 - APIを認証なしで外部公開しない。TLS終端、許可接続元、ポート公開範囲は実ネットワークを確認するまで決めない。
 - テスト専用の1Password project/server/vaultは作らない。既存Vaultの安全な読み取り確認のみを対象にし、内容値をログへ出さない。
 - GitLabにsecret値を保存しない。self-hosted runnerごとのsecret file path/権限で運用し、credential JSON/API tokenをGitLab CI variable、artifact、job logへ出さない。Shared runnerは使わない。Runner/CI設定の変更は別担当に委ねる。
@@ -66,5 +68,5 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 - 3拠点のOS/ネットワークが未確認 → 推測で配備せず、ホスト別調査を受け入れ条件に追加。
 - Community利用者の2-cluster同一credentials file実例と公式Helm replica/credential Secret構成を区別して記録。既存tokenを3つの独立APIで使えることは設計推論であり、実site認証まで未確認。新規登録/追加tokenの承認gateは設けない。secret配布操作が必要な場合は対象siteと手順を親へ明示し、安全なhandoffを使う。
 - screenshot状態は登録/tokenの存在のみでデプロイ/認証確認ではない → 認証受け入れ条件を別途定義。
-- PP2→1Password plugin MCPの `tools/call` 経路とConnect site bindingが未記載 → tools/list/allow-list/read-only call/result/error契約、site-local Connect経路の検証、中央/他siteへのsilent bypass禁止を受け入れ条件と設計に追加。PP2のcodebase/具体tool schemaは未確認。
+- PP2→1Password plugin MCPのstdio downstream契約、MCP成功/エラー/通知のsecret-safe出力、既存外部認証/OS permissions、Connect site bindingが未記載 → Hub localstdio起動、metadata-only応答、独自認証/承認/権限昇格なし、指定site経路の確認を追記。PP2 core project IDは87779895と確認済み。
 - CI停止を目標状態と混同 → self-hosted runner 3台をsite別に使う目標へ改め、現snapshotでtagなし/project許可なしの事実と別担当設定を明記。
