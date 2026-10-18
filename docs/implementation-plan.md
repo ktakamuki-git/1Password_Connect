@@ -20,14 +20,17 @@
 3. 公式1Password Communityの回答者が2 clusterで同一 `1password-credentials.json` を使った自身の例と、公式Helm deploymentのreplica/credentials Secret定義を別の根拠として記録する。これをCredentialMCP登録1つ/既存credential/token再利用の設計根拠とするが、3 siteの認証成功はsite別実動作まで未確認とする。別登録やtoken発行は行わない。
 4. credential placementが必要な場合は対象siteと操作を親へ明示し、安全なhandoffを使う。OS file permission/secret storeを設定し、Git/chat/CI variable/logへ値を戻さない。
 
-## Phase 2.1 — PP2から1Password plugin MCPを呼ぶadapter
+## Phase 2.1 — このrepository内の1Password plugin MCP module
 
-1. PP2の既存1Password plugin MCP接続を特定し、MCP `tools/list`で実在tool名と `inputSchema` を取得する。未確認のendpoint/transport/tool nameを推測しない。
-2. 各site用plugin MCP接続のbackend route/bindingを追跡し、対象site-local Connect APIに結び付くことを確認する。中央/他siteのConnectや未確認経路へsilent bypassしない。site-local経路を確認できなければ準拠とは扱わず、親へ未確認/例外として報告する。
-3. PP2側の小さなadapterがallow-list済みread-only toolをMCP JSON-RPC 2.0 `tools/call` で呼ぶ契約を定義する。未知tool/write tool拒否、入力schema検証、correlation ID、content/structuredContent処理、protocol errorと `isError` の分類、timeoutを実装する。
-4. secret/item contentsとcall arguments/resultsをlogに残さず、人の確認を伴うread operationにする。Direct Connect REST fallbackや新credential設定は実装しない。
-5. JSON-RPC mock contract/unit testsを作成し、site route selectionが中央/他siteへ向かないことを検証する。live plugin callは既存接続/authの状態と対象operationを確認してから扱う。
-6. PP2本体repo/pathがこのproject treeにないため、PP2 adapter sourceはPP2 repository identityを確認してからその既存repoに実装する。1Password_Connect repoに別アプリを誤配置しない。
+PP2本体はProject ID `87779895` (`ktakamuki_wsl/pc-platform/pc_platform2`) と確認済み。この実装計画のpluginはこのConnect repository内の分離moduleに置き、PP2 Hubがlocalstdio downstreamとして起動する。PP2 coreは変更せず、別のMCP中継層も追加しない。
+
+1. PP2 Hubがlocalstdio pluginにMCP `tools/list` を送り、実在するtool metadata/schemaを確認できる契約を実装する。Hubの既存外部認証とplugin processの既存OS identity/permissionsを使い、独自認証、caller approval、role、権限昇格を追加しない。
+2. Hubは確認済みのtool/schemaをallow-listと照合し、許可されたread-only toolだけをJSON-RPC 2.0 `tools/call` でpluginへ送る。未知tool/write/delete tool、schema外argumentは拒否する。
+3. pluginはそのcallを処理し、指定siteのConnect API REST endpointへ接続する。各siteのbackend route/bindingを確認し、本人の明示的な経路変更は許容して記録/reviewする。指定なしの他siteへのsilent switchingは行わない。RESTはplugin backendであり、Hubがpluginを迂回するfallbackではない。
+4. Hub/Chat向けの成功結果、error、notificationはすべて定義済み公開metadataだけに射影する。`content` / `structuredContent` をraw pass-throughせず、secret値、credential file本文、Bearer token、secret-bearing resultを返さない。秘密値を返すtoolは作らず、追加のhuman confirmationも導入しない。許可consumer内での秘密供給はMCPの値返却経路と分ける。
+5. JSON-RPC mock contract/unit testsで、`tools/list` metadata/schema、allow-list、`tools/call` request、success/tool error/protocol error/notification、timeout、unknown/write tool拒否、metadata-only output、secret-safe logsを検証する。site routeの選択が指定siteと一致することもmockで検証する。
+6. PP2 Hubとの実接続やsite認証は、接続実装とsite route/configurationが確認された後に行う。認証情報や秘密値はテストfixture、ログ、chat、Gitに含めない。
+
 
 ## Phase 3 — common profile and Docker Compose candidate
 
@@ -35,13 +38,14 @@
 2. 公式Docker Compose例を基にした一site候補を `deploy/docker/compose.yaml` に実装する。Connect API/Syncは同じ公式Connect release `1.8.3`、同じsite-local encrypted data volume、必須のread-only credentials file reference、internal manual busを使う。APIのhost bindは `127.0.0.1:8080` のみ。
 3. Official Connect image内でrootを使うHTTP probeを仮定せず、別のhealthcheck serviceをUID 65532で実行する。API `/health` の `sync` と `sqlite` dependencyが `ACTIVE` であることを標準libraryだけで確認する。probeは任意の `monitoring` profileで起動し、API/Sync本体をgateしない。初回auth GET前の `TOKEN_NEEDED` はpendingであり、observer unhealthy単独では失敗扱いしない。
 4. `tests/` にYAML contract testとhealth response unit testを保存する。ローカル実行を一次検証にする。CI jobを追加するときはsite-specific tagを付け、3台のself-hosted runnerへ固定する。shared runnerは使わない。
-5. Compose候補/テストの追加は実hostへの適用ではない。hostのDocker Compose/runtime・loopback到達性確認と、credential fileの別途承認済みsafe handoffが揃うまで起動しない。
+5. Compose候補/テストの追加は実hostへの適用ではない。実credential handoff前に、secretを含まないdummy credentials-file path参照で `docker compose config` による構文検証ができる。これはコンテナ起動や認証を行わない。実hostへの起動はhostのDocker Compose/runtime・loopback到達性確認と既存credentialの安全なhandoff後に行う。
 
 ## CI/Runner plan — site-bound execution
 
-CI pipelineは3 site別のtest/deploy jobへ分け、各jobの `tags` をそれぞれ `appv4`、`main-ubutsu2`、`oyama-wsl` とする。siteのdeployはprotected environment + manual actionとし、そのsite専用runnerからのみ実行する。別siteやshared runnerへのfallbackは構成しない。host-local secret file pathはrunner側で安全に供給し、GitLab CI variable/artifactにcredential JSONやConnect tokenを渡さない。
+CI jobのsite割当は、self-hosted runnerを各siteに1台ずつ使い、各jobのtagを `appv4`、`main-ubutsu2`、`oyama-wsl` に対応させる。別site runnerやshared runnerへのfallbackはしない。CI jobのtrigger/保護は既存GitLab設定と本人指示に従い、manual/protected gateを新たな必須条件として追加しない。host-local secret file referenceはrunner側で安全に供給し、credential JSONやConnect tokenをGitLab CI variable/artifactへ渡さない。
 
-2026-10-18のrunner inventoryではnon-shared group runnerが3台online/activeだがtag listは空で、project runner listは0、`group_runners_enabled=false`。project jobs/buildsもdisabled。tag/access/settingsの更新は別担当で実施し、本作業では変更しない。設定が反映されたことをread-onlyで確認するまでpipeline/jobを開始しない。
+2026-10-18のrunner inventoryではnon-shared group runnerが3台online/activeだがtag listは空で、project runner listは0、`group_runners_enabled=false`。project jobs/buildsもdisabled。tag/access/settings更新は別担当の作業とし、本作業では変更しない。site別runnerの割当と利用可否は設定準備後にread-onlyで確認し、実行可能状態と本人指示を満たしてから対象jobを開始する。
+
 
 ## Phase 4 — hostごとのruntime設定と配備
 
@@ -53,22 +57,33 @@ CI pipelineは3 site別のtest/deploy jobへ分け、各jobの `tags` をそれ�
 
 ## Phase 5 — ローカル検証とself-hosted CI
 
-実際の対応local repositoryが開ける場合、GitLabへ保存したテストコードをローカルで実行し、失敗時もsecret値を出さない。MCP adapter testsはlive 1Password接続を使わず、mock transportを使う。ローカル実行結果とCI結果を別々に記録する。self-hosted CI実行は親のレビュー後かつ別担当のrunner/tag/project access設定が有効であることを読み取り確認後に限る。shared runnerにはfallbackしない。
+実際の対応local repositoryが開ける場合、GitLabへ保存したテストコードをローカルで実行し、失敗時もsecret値を出さない。MCP adapter testsはlive 1Password接続を使わず、mock transportを使う。Compose syntax validation、unit/contract tests、static CIはAPI readinessに依存しない。これらはAPI/Syncの実配備・認証・readinessとは別に記録する。self-hosted CI実行は親のレビュー後かつ別担当がrunner/tag/project access設定を整えたことをread-onlyで確認後に行い、shared runnerにfallbackしない。jobのtrigger/保護は既存GitLab設定と本人指示に従い、新しいmanual/protected必須gateは追加しない。
 
-- `python -m pip install -r tests/requirements.txt` の後、`python -m unittest discover -s tests -v` でCompose契約/healthcheck unit testsを実行する。Composeファイルの `CONNECT_CREDENTIALS_FILE` は承認handoff後に設定し、その時だけ `docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yaml config` で構文確認する。
+- 実credential handoffの前に、`CONNECT_CREDENTIALS_FILE` をsecret-free dummy pathへ向ける一時env fileを用いて `docker compose --env-file <temporary-dummy-env> -f deploy/docker/compose.yaml config` を実行する。Composeがsource fileの存在を要求する場合に限り、repo外に空の非secret placeholder fileを作る。実credentialを読ませず、`docker compose up` は実環境/credential準備後に限る。
+- `python -m pip install -r tests/requirements.txt` の後、`python -m unittest discover -s tests -v` でCompose契約/healthcheck unit testsを実行する。
 - Helmを使うsiteはhelm lint、helm template、chart/schema version確認。
-- MCP adapterは `tools/list` metadata、schema allow-list、`tools/call` request/response、protocol/tool errors、timeout、unknown tool rejection、secret-safe logsをmockで検証する。
-- manifest内に秘密値、public bind、未許可port、APPv3 target、cross-site shared volumeがないことを静的check。
+- MCP adapterはmockで `tools/list` metadata、schema allow-list、`tools/call` request/response、success/error/notificationの公開metadata projection、protocol/tool errors、timeout、unknown tool rejection、secret-safe logsを検証する。秘密値を返すtoolや人手確認gateは作らない。
+- manifest内に秘密値、public bind、未許可port、APPv3 target、cross-site shared volumeがないことを静的checkする。
 - secret fileはdummy/path placeholderを使用し、実credentialをfixtureやsampleにしない。
 - local test結果にはrepository path、commit SHA、実行コマンド、exit codeのみを残す。正式remote/local repo接続不能なら「未実施」と明記する。
 
+
 ## Phase 6 — siteごとの配備と実動作
 
-実環境と安全なcredential handoffの準備後、一siteずつ進める。site deploy jobが必要ならmanual/protectedで、その拠点専用のself-hosted runnerからのみ開始する。最初はAPPv4を候補にするがVM102を正式確認してからにする。次にMainUbutsu2、最後にMiniPC-Oyamaを個別配備する。
+siteのhost/runtime情報と既存credentialの安全なhandoffが整った後、siteごとに配備を開始する。API readinessは配備後に得る結果であり、配備開始やsecret-free static CIの前提にしない。アプリ切替はreadinessとVault identityの確認後に限る。site jobが必要な場合は各拠点専用self-hosted runnerへ割り当て、既存GitLab設定と本人指示に従う。manual/protected gateを新設必須化しない。最初はAPPv4を候補にするがVM102 identityを正式確認してからにする。次にMainUbutsu2、最後にMiniPC-Oyamaを個別配備する。
 
-各siteで順番を守って確認する: API/Sync processとAPI `/heartbeat`、承認済みsafe handoffを使う既存tokenでの認証 `GET /v1/vaults`（初回syncを開始）、API `/health` のsync/sqlite `ACTIVE`、Vault識別情報、site-local app cutover。初回認証GET前の `TOKEN_NEEDED` / observer unhealthy単独を起動失敗としない。observerは任意起動であり、health failureがAPI/Syncの起動制御に使われることはない。結果には読み取りスコープ、アプリ経路、public exposureなし、image SHA/tagも記録する。testにVault write/deleteを含めない。
+各siteで次の順序を守る:
+1. API/Sync deploymentを起動する。
+2. process/container statusとAPI `/heartbeat` を確認する。heartbeatはlivenessであり、初回同期/readinessを示さない。
+3. siteごとに承認済みsafe secret handoffを用い、既存tokenで認証付き `GET /v1/vaults` を実行して初回syncを開始する。tokenや本文をログに出さない。
+4. API `/health` のsync/sqliteがともに `ACTIVE` になるまで待つ。`TOKEN_NEEDED` / observer unhealthyだけで失敗と断定しない。
+5. Vault識別情報とread-only scopeを確認する。
+6. readinessとVault identityが確認できた後に限り、そのsite-local APIへアプリ経路を切り替える。
+
+この順序で配備、heartbeat、初回認証GET、readiness、app cutoverを分けて記録する。static tests/CIはreadinessを待たずに独立実行できる。結果には読み取りスコープ、アプリ経路、public exposureなし、image SHA/tagも記録する。testにVault write/deleteを含めない。
 
 三siteの実動作が全部成功するまで「完了」と報告しない。認証失敗、Sync停滞、version差、host identity不一致、public exposureの疑いがある場合はそのsiteを閉じて親に報告する。
+
 
 ## Stop条件/承認handoff
 
@@ -76,4 +91,6 @@ CI pipelineは3 site別のtest/deploy jobへ分け、各jobの `tags` をそれ�
 
 ## 実装計画レビュー
 
-ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2 adapter契約とsite-local Connect route確認、3 site専用self-hosted runner、現snapshot未準備状態を計画へ反映。設計段階の独立レビュー後にhost-independent template、Compose candidate、test source、PP2 adapter implementationを対象PP2 repoへ追加する。per-host設定/配備/CI実行はhost/runtime、runner mapping、safe secret distribution、およびAPI readinessの確認後に行う。
+ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2本体はProject ID 87779895と確認済み。pluginはこのConnect repositoryの分離moduleとしてHub localstdioから起動し、Hub→plugin→site-local Connect RESTの呼び出し方向、PP2 core非変更、既存Hub認証/OS permissions、本人指定の経路変更、metadata-only outputを計画に反映した。secret-returning tool/新しいhuman confirmation gateや新規manual/protected gateは設けない。
+
+Compose構文検証とsecret-free static CIはcredential handoff・実配備・API readinessに依存させず、dummy path referenceで先行可能とした。site deploymentは起動→heartbeat→初回認証GET→readiness→Vault identity→app cutoverの順とし、readinessは配備開始条件でなくアプリ切替条件である。per-host deploymentとsite-bound CI jobはhost/runtime、safe secret distribution、runner/tag/project accessのreadinessを別に確認し、既存GitLab設定と本人指示に従う。
