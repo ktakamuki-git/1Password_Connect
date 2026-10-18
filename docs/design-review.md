@@ -8,11 +8,11 @@
 
 | 段階 | 現行成果SHA | レビュー結果 |
 |---|---|---|
-| 要件定義 | docs/requirements.md — 13a88a820bedc4615a5e96a1d29dc687804340d6 | CredentialMCP identity 1つ/3 runtime pairs、MCP tools/call adapter要件、site専用Runner 3台を追加。現statusは未準備と区別。 |
-| 概要設計 | docs/overview-design.md — 34b2fc5d3a990add4db7dcf7ca972a5a0483857f | Connect REST data planeとPP2→plugin MCP call境界を分離し、runner/tag/accessの現在値と目標を明記。 |
-| 詳細設計 | docs/detailed-design.md — ecdb774be1c639bd1431eeae4dbf4ee93435d765 | MCP tools/list/call、schema allow-list、error/result安全取扱いを定義。Community 2-cluster例とHelm replica根拠を分け、site runner preconditionを追加。 |
-| 実装計画 | docs/implementation-plan.md — a3bbef93798ad4bd65a990952cac151f9605ab12 | PP2 codebase特定後のadapter実装、mock tests、site-bound manual/protected runner jobsを計画。 |
-| テスト設計 | docs/test-design.md — bf7574db3ccb39c3c90d43ca0ed643561d2d01e3 | MCP mock contract/unitとsite runner routing/deployment gate試験を追加。live calls、pipeline実行は未実施。 |
+| 要件定義 | docs/requirements.md — bae0a3556ef04d58af1bdd990b9f993518fe5422 | CredentialMCP identity 1つ/3 runtime pairs、MCP tools/call adapter要件、site専用Runner 3台を追加。現statusは未準備と区別。 |
+| 概要設計 | docs/overview-design.md — 5e1f98fff5062b2b0558f59840bdb4f92c516c76 | Connect REST data planeとPP2→plugin MCP call境界を分離し、site-local Connect bindingの確認とsilent bypass禁止、runner/tag/accessの現在値と目標を明記。 |
+| 詳細設計 | docs/detailed-design.md — c409534b5f0cf7f416ffb2d1ecf34cca607f2de3 | MCP tools/list/call、site-local backend route確認、schema allow-list、error/result安全取扱いを定義。Community 2-cluster例とHelm replica根拠を分け、site runner preconditionを追加。 |
+| 実装計画 | docs/implementation-plan.md — a572602ff448159799b2870ede55308d12d733b9 | PP2 codebase特定後のadapter実装、site-local routeのmock/live検証、site-bound manual/protected runner jobsを計画。 |
+| テスト設計 | docs/test-design.md — 89b430f34cf8d795a6aa519511cbf79dc28d1c23 | MCP mock contract/unit、site route negative test、site runner routing/deployment gate試験を追加。live route/auth calls、pipeline実行は未実施。 |
 
 これらは今回の追加要件を含むstage文書のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も維持している。今回の5段階変更は親の新しい独立レビュー待ちであり、過去の `de6c791d` に対する承認は今回の追加要件や次の実装には継承しない。  
 共通template: profile `templates/connect-site-profile.example.json` — 17bd350a5b238eaaf61a4bd19ebab8fe3aefba49; schema — 5c6eac3d19c4254ffb2c6a3cf343b788a5139ef5; usage README — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3.
@@ -21,7 +21,7 @@ Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optiona
 ## 2. 今回の追加要件とレビュー観点
 
 1. **Connect identity/replicas evidence** — 公式Helm deployment templateはreplica countと同一credentials SecretをAPI/Sync containerへ渡す定義を示す。公式1Password Community回答者は自身の試行として2 clusterで同一 `1password-credentials.json` を使用したと報告。community実例と公式Helm構造は別の根拠として記録し、3 site認証は未確認、同一tokenの全API受理は設計仮説とした。新規registration/token作成は含めない。[Community report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Helm template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
-2. **PP2→plugin MCP adapter** — 欠けていたMCP JSON-RPC `tools/list` / `tools/call` 要件を追加。実tool名/transport/server identityを推測せず、allow-list/schema、error/result handling、secret-safe outputを契約化。PP2 repository identityは未確認なのでcodeを別repoへ配置しない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+2. **PP2→plugin MCP adapter** — 欠けていたMCP JSON-RPC `tools/list` / `tools/call` 要件を追加。実tool名/transport/server identityを推測せず、allow-list/schema、error/result handling、secret-safe outputを契約化。PP2 repository identityは未確認なのでcodeを別repoへ配置しない。plugin backendのsite-local Connect bindingを実環境で確認し、中央/他siteへのsilent bypassをしない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 3. **CI runner plan** — 恒久停止の要求文を除き、3 site専用self-hosted runnerのtag mappingとshared runner禁止を設計した。read-only inventory: `appv4` / `main-ubutsu2` / `oyama-wsl` group runnersはonline/active/non-sharedだがtag list空、project runner list 0件、project group/jobs/builds設定disabled。別担当が設定するまでpipelineは未実行。設定変更はしていない。
 4. **Overview/Connect details retained** — app→local API、API/Sync同site volume、Sync→Cloud方向、Sync health port、API initial `TOKEN_NEEDED` pending sequenceを既存設計から保持。
 5. **Host inventory/local access** — APPv4 VM102等の実環境確認、MainUbutsu2正式remote path、MiniPC-Oyama WSL runtimeは未確認。既報Windows executor WSL拒否の昇格/別資格情報迂回はしていない。
@@ -34,6 +34,7 @@ Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optiona
 - token/credentialsの値を取得・表示・Git保存しない。
 - 既存画面のAutomation/ChromeVault read-only表示はConnect API認証成功の証拠と扱わない。
 - APIを未認証でInternetへ公開しない。site-specific network/TLS/port設定は実環境確認後。
+- PP2 plugin MCP経路が対象site-local Connectへ結び付くことを実環境でsite別に確認する。routeが中央/他siteを指す、または未確認なら準拠と報告せず、silent bypassしない。
 - Intended CI uses only three site-bound self-hosted runners and no shared runner. Current project settings disable jobs/builds/group runners; three non-shared group runners are online but untagged and unavailable to this project. No pipeline/runner was started; access/tag configuration is assigned to a separate owner.
 - test専用1Password project/server/vaultは作らない。実Vaultへのwrite/delete試験も行わない。
 
