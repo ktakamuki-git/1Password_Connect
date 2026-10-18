@@ -26,9 +26,22 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 - Connect tokenが対象Vaultの読み取りのみを許すことを、値を表示せずアカウント側の権限情報で確認する。読み取り専用でない場合は既存credentialを変更せず、親に権限変更の必要性を報告する。
 - ChromeVaultなどitem名/内容をAPI応答やtest logに記録しない。受け入れ記録は成功/失敗と応答statusだけにする。
 
-公式Connect conceptsではcredentials fileはserverごとに生成され、server tokenはその許可Vaultへアクセスする。同一Secrets Automation workflowを複数のKubernetes Operator/deploymentが利用できる旨は公式コミュニティスタッフ回答で確認済みであり、CredentialMCPの同一logical identity/既存tokenを3拠点に配置する案と整合する。別登録や追加tokenは作らない。[Connect concepts](https://www.1password.dev/connect/concepts) / [Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315)
+1Password Communityの回答者は、自身が2つのKubernetes clusterそれぞれにConnectを配備し、同一 `1password-credentials.json` を使ったと報告している。公式Helm deploymentはreplica数を設定し、API/Sync containerが同じcredentials Secretをmountする。前者は2-clusterの実践報告、後者はHelmのdeployment/replica構成の根拠であり、3-site動作の保証や実地確認ではない。
 
+したがってCredentialMCPの登録identityとruntime pair 3組は分け、既存credential/tokenの再利用を設計前提として扱う。既存tokenが各site APIで受理されることは3 siteの認証結果が揃うまで仮説である。追加登録/tokenや権限変更は行わない。実際にcredentialをhostへ置く段階では、対象siteと操作を親へ示し既存の安全なhandoffを使う。[1Password Community: multi-cluster report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm deployment template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
 この仕様確認はcredential file/tokenを各hostへ配置する承認と異なる。secret placementはsiteごとに安全なhandoff承認を得てから行い、配備後に各APIを個別に認証試験する。
+
+## 2.1 PP2から1Password plugin MCPを呼ぶadapter
+
+PP2 adapterは既存1Password plugin MCP接続を通じてMCP toolを呼ぶ。Connect REST APIと同一のAPI/credentialと見なさず、PP2 repo/transport/server identity/tool schemaを確認するまではendpoint、認証方式、実tool名を固定しない。新規の1Password credentialやtokenは生成・設定しない。
+
+1. serverのtool metadataを標準MCP `tools/list` で取得し、PP2側の固定allow-listと `inputSchema` に照合する。未知tool、write/delete tool、schema外argumentは拒否する。
+2. allow-list内toolだけをJSON-RPC 2.0 `tools/call` で呼ぶ。requestは `{"jsonrpc":"2.0","id":"<correlation-id>","method":"tools/call","params":{"name":"<allow-listed-tool>","arguments":{}}}` 形式。`id` はcallごとに一意とし、実際のtool名/argumentsは登録plugin metadataとPP2要求から決める。
+3. JSON-RPC protocol `error` と `result.isError=true` を区別し、`content` と任意 `structuredContent` をschemaに従って検証する。transport timeout/切断は別の失敗として返す。tool名/引数を推測してリトライしない。
+4. PP2 callerへ許可範囲の最小結果だけを返す。ログ/auditにはcorrelation id、tool名、status、所要時間などだけを記録し、arguments、result content、item values、Bearer token、credential fileを出さない。secretを返すread toolは呼出し前に人の確認を要求する。
+5. MCP call失敗時にConnect RESTへsilent fallbackしない。既存plugin接続/authの問題は診断結果を返し、credential再発行や設定変更を自動化しない。
+
+MCP protocolのtool discovery/callとtool result/errorの形式を使用する。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)。PP2本体の対象repositoryと接続実装が未確認のため、この節は実装contractとmock-test要求であり、実接続の証明ではない。
 
 ## 3. コンテナ設定項目
 
@@ -53,7 +66,13 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 3. 接続がtrusted network boundaryを越える場合はTLSを使う。証明書とTLS termination方式は実ネットワークの確認後に選ぶ。
 4. 外向きSync接続は各siteのegress/proxy/FWを調査してから許可する。接続先を推定してFWルールを作らない。
 5. credential file、token、private keyをcontainer environmentの直接値や出力可能なcompose configに埋め込まない。container secret/file mountを優先する。
-6. GitLab project CI/CDを全停止済み。GitLabに配備用secretやtoken variableを作らない。
+6. CIを使う場合はsite-bound self-hosted runnerを3台使い、shared runnerを使わない。tagは `appv4` / `main-ubutsu2` / `oyama-wsl` を想定し、runner hostの安全なsecret file referenceを使う。token/credentialsはGitLab CI variable、artifact、job log、checkoutへ置かない。
+
+## 4.1 CI/Runner境界
+
+site別jobは各専用runner tagに固定し、他site runnerやshared runnerへfallbackしない。deploy jobはsiteごとにmanual/protectedにする。static testにsecret値を必要としない。実配備jobではConnect credential/API tokenの値をGitLabへ渡さず、runner host側の管理済みsecret file pathを参照する。
+
+GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner `appv4`、`main-ubutsu2`、`oyama-wsl` の3台がonline/activeで登録されているが、全runnerのtag listが空で、このprojectのrunner listは0件。project settingsも `group_runners_enabled=false`、`jobs_enabled=false`、`builds_access_level=disabled`。この設計/実装タスクからこれら設定を変更しない。別担当がaccess/tag/settingsを整えたことを読み取り確認するまでpipelineやrunner jobを実行しない。
 
 ## 5. 接続の確認方法
 
@@ -82,4 +101,6 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 - Sync health portをアプリ公開と混同しないよう整理。
 - 認証試験でtokenをCLI引数/ログに出したりVault内容を表示する危険を除き、GET /v1/vaultsの識別情報だけを見る方針へ変更。
 - write権限確認のために本Vaultを変更しない。権限metadataからread-onlyを確認する。
-- 同一Secrets Automation workflow再利用の公式staff回答を根拠にし、siteごとの安全なsecret handoff承認とAPI認証試験を別条件として明記した。
+- Community上の2-cluster同一credentials file実例と公式Helmのreplica設定を区別し、3-site API acceptanceは未実証の設計仮説とした。
+- PP2→plugin MCP adapterに `tools/list` / `tools/call`、schema/allow-list、JSON-RPC errorと `isError`、result redaction/confirmationを定義した。
+- 3台のsite runnerを指定し、実際のtag/project eligibilityが無効のままであることと外部設定担当の境界を記載した。
