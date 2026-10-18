@@ -73,11 +73,9 @@ function responseText(result) {
   return (result?.content ?? []).filter((item) => item.type === 'text').map((item) => item.text).join('\n');
 }
 
-async function hubAllowListedCall(client, name, args) {
-  if (name !== TOOL_NAME) {
-    return { isError: true, content: [{ type: 'text', text: JSON.stringify({ status: 'tool_not_allowed' }) }] };
-  }
-  return client.callTool({ name, arguments: args });
+function callAudits(stderr) {
+  return stderr.split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line))
+    .filter((entry) => entry.event === 'tool_call_audit');
 }
 
 test('Hub-equivalent stdio client discovers one read-only tool and receives only vault ID metadata', async () => {
@@ -92,6 +90,9 @@ test('Hub-equivalent stdio client discovers one read-only tool and receives only
     await withHubClient({ origin: api.origin }, async ({ client, notifications, getStderr }) => {
       const listing = await client.listTools();
       assert.deepEqual(listing.tools.map((tool) => tool.name), [TOOL_NAME]);
+      assert.equal(listing.tools[0].inputSchema.type, 'object');
+      assert.deepEqual(listing.tools[0].inputSchema.properties, {});
+      assert.equal(listing.tools[0].inputSchema.additionalProperties, false);
       assert.equal(listing.tools[0].annotations.readOnlyHint, true);
       assert.equal(listing.tools[0].annotations.destructiveHint, false);
 
@@ -103,6 +104,7 @@ test('Hub-equivalent stdio client discovers one read-only tool and receives only
       assert.equal(metadata.siteId, 'appv4');
       assert.deepEqual(metadata.vaultIds, ['vault-public-id-1']);
       assert.match(metadata.routeFingerprint, /^[a-f0-9]{16}$/u);
+      assert.match(metadata.correlationId, /^[a-f0-9-]{36}$/u);
       assert.equal(result.structuredContent, undefined);
       assert.ok(!text.includes('Sensitive Vault Name'));
       assert.ok(!text.includes(SECRET_CANARY));
@@ -113,6 +115,12 @@ test('Hub-equivalent stdio client discovers one read-only tool and receives only
       assert.deepEqual(notifications, []);
       assert.ok(!getStderr().includes(SECRET_CANARY));
       assert.ok(!getStderr().includes(TEST_TOKEN));
+      const [audit] = callAudits(getStderr());
+      assert.equal(audit.correlationId, metadata.correlationId);
+      assert.equal(audit.tool, TOOL_NAME);
+      assert.equal(audit.status, 'ok');
+      assert.ok(Number.isInteger(audit.durationMs) && audit.durationMs >= 0);
+      assert.deepEqual(Object.keys(audit).sort(), ['correlationId', 'durationMs', 'event', 'status', 'tool']);
     });
   } finally {
     await api.close();
@@ -129,35 +137,41 @@ test('Connect HTTP errors become safe metadata and never expose the response bod
       assert.equal(result.isError, true);
       assert.equal(metadata.status, 'unauthorized');
       assert.equal(metadata.httpStatus, 401);
+      assert.match(metadata.correlationId, /^[a-f0-9-]{36}$/u);
       assert.ok(!text.includes(SECRET_CANARY));
       assert.ok(!text.includes(TEST_TOKEN));
       assert.equal(api.observations.requests, 1);
       assert.deepEqual(notifications, []);
       assert.ok(!getStderr().includes(SECRET_CANARY));
       assert.ok(!getStderr().includes(TEST_TOKEN));
+      const [audit] = callAudits(getStderr());
+      assert.equal(audit.correlationId, metadata.correlationId);
+      assert.equal(audit.tool, TOOL_NAME);
+      assert.equal(audit.status, 'unauthorized');
+      assert.ok(Number.isInteger(audit.durationMs) && audit.durationMs >= 0);
     });
   } finally {
     await api.close();
   }
 });
 
-test('Hub allow-list rejects unknown tools; plugin rejects invalid arguments without contacting Connect', async () => {
+test('The plugin rejects unknown tool names and invalid arguments without reflecting input or contacting Connect', async () => {
   const api = await startMockApi();
   try {
     await withHubClient({ origin: api.origin }, async ({ client, notifications, getStderr }) => {
-      const unknownResult = await hubAllowListedCall(client, `unknown_${SECRET_CANARY}`, {});
-      assert.equal(unknownResult.isError, true);
-      assert.equal(JSON.parse(responseText(unknownResult)).status, 'tool_not_allowed');
-      assert.ok(!responseText(unknownResult).includes(SECRET_CANARY));
-
-      let invalidArgsResult;
-      try {
-        invalidArgsResult = await client.callTool({ name: TOOL_NAME, arguments: { unexpected: SECRET_CANARY } });
-      } catch (error) {
-        invalidArgsResult = { isError: true, error };
+      for (const name of [`unknown_${SECRET_CANARY}`, `write_${SECRET_CANARY}`, `delete_${SECRET_CANARY}`]) {
+        const result = await client.callTool({ name, arguments: { [SECRET_CANARY]: SECRET_CANARY } });
+        assert.equal(result.isError, true);
+        assert.equal(JSON.parse(responseText(result)).status, 'tool_not_allowed');
+        assert.ok(!JSON.stringify(result).includes(SECRET_CANARY));
       }
+      const invalidArgsResult = await client.callTool({
+        name: TOOL_NAME,
+        arguments: { [SECRET_CANARY]: SECRET_CANARY },
+      });
       assert.equal(invalidArgsResult.isError, true);
-      assert.ok(!String(invalidArgsResult.error?.message ?? responseText(invalidArgsResult)).includes(SECRET_CANARY));
+      assert.equal(JSON.parse(responseText(invalidArgsResult)).status, 'invalid_arguments');
+      assert.ok(!JSON.stringify(invalidArgsResult).includes(SECRET_CANARY));
       assert.equal(invalidArgsResult.structuredContent, undefined);
       assert.equal(api.observations.requests, 0);
       assert.deepEqual(notifications, []);

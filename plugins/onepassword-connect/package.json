@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
-    "check": "node --check src/index.js && node --check src/connect-api.js && node --check tests/plugin.test.js"
+    "check": "node --check src/index.js && node --check src/connect-api.js && node --check tests/plugin.test.js && node --check tests/connect-api.test.js && node --check tests/protocol-boundary.test.js && node --check tests/hub-integration.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.1",
