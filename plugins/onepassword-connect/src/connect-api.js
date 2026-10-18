@@ -87,6 +87,7 @@ export function createConnectApiClient({ env = process.env, fetchImpl = fetch } 
       if (!config.origin) return publicMetadata(config, config.status);
 
       let response;
+      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       try {
         response = await fetchImpl(new URL('/v1/vaults', config.origin), {
           method: 'GET',
@@ -96,7 +97,7 @@ export function createConnectApiClient({ env = process.env, fetchImpl = fetch } 
           },
           cache: 'no-store',
           redirect: 'error',
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          signal: timeoutSignal,
         });
       } catch {
         return publicMetadata(config, 'connect_unavailable');
@@ -111,7 +112,7 @@ export function createConnectApiClient({ env = process.env, fetchImpl = fetch } 
       try {
         payload = await response.json();
       } catch {
-        return publicMetadata(config, 'invalid_upstream_response');
+        return publicMetadata(config, timeoutSignal.aborted ? 'connect_unavailable' : 'invalid_upstream_response');
       }
       if (!Array.isArray(payload) || payload.length > MAX_VAULTS ||
           payload.some((vault) => vault === null || typeof vault !== 'object' || !validVaultId(vault.id))) {
