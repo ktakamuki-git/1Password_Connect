@@ -5,7 +5,7 @@
 
 ## 1. 目的
 
-既存の1Password Connect登録 **CredentialMCP** と既存の認証情報を用いる前提を検証し、APPv4、MainUbutsu2、MiniPC-Oyama の各拠点に独立したConnect runtimeを配備する。各拠点のアプリは同じ拠点にあるConnect APIへ接続し、同じVaultを読む。PP2は既存1Password plugin MCPを `tools/call` で呼ぶアダプターを持つ。登録identity、token、deploymentの数は混同しない。
+既存の1Password Connect登録 **CredentialMCP** と既存の認証情報を用いる前提を検証し、APPv4、MainUbutsu2、MiniPC-Oyama の各拠点に独立したConnect runtimeを配備する。各拠点のアプリは同じ拠点にあるConnect APIへ接続し、同じVaultを読む。PP2 Hubはこのrepositoryの1Password plugin MCP downstreamに `tools/list` と `tools/call` を送り、pluginは指定siteのConnect REST APIへ接続する。登録identity、token、deploymentの数は混同しない。
 
 ## 2. スコープ
 
@@ -27,7 +27,7 @@
 6. APIは未認証で外部公開しない。各拠点で接続元を限定し、信頼ネットワーク外をまたぐ場合はTLSを使う。
 7. APPv3には配備しない。APPv4とAPPv3を識別できるホスト情報を確認してから変更する。
 8. 実配備と実動作を拠点別に検証し、単体/static test、配備、3拠点実動作を別々に記録する。
-9. PP2 Hub（Project ID `87779895`）は、このrepositoryのplugin分離moduleをlocalstdio MCP downstreamとして起動する。PP2 coreは変更しない。Hubの既存外部認証と下流processの既存OS実行identity/permissionsを使い、独自認証・承認機構や権限昇格は追加しない。pluginはMCP `tools/list` で実在tool/schemaを確認し、許可されたread-only toolをJSON-RPC `tools/call` で呼ぶ。成功結果・protocol/tool error・通知を含むHub/Chat向けMCP出力は、定義済みの公開metadataだけとし、secret値、credential file本文、Bearer token、secret-bearing resultを含めない。秘密値の供給が必要な場合は明示的に許可されたconsumer内の別経路で扱い、値をChatへ返すMCP toolは作らない。各siteのpluginはそのsiteに指定されたConnect経路を検証し、指定なしに他siteへ切り替えない。本人が明示的に経路変更を指示した場合は、その指定に従い記録/レビューする。具体的なtool schema/transportは実装前に確認し、推測しない。
+9. PP2 Hub（Project ID `87779895`）は、このrepositoryのplugin分離moduleをlocalstdio MCP downstreamとして起動する。PP2 coreは変更しない。Hubの既存外部認証と下流processの既存OS実行identity/permissionsを使い、独自認証・承認機構や権限昇格は追加しない。HubはpluginにMCP `tools/list` を送り実在tool/schemaを確認し、許可されたread-only toolをJSON-RPC `tools/call` で呼ぶ。pluginはその呼び出しを処理して指定siteのConnect REST APIへ接続する。成功結果・protocol/tool error・通知を含むHub/Chat向けMCP出力は、定義済みの公開metadataだけとし、secret値、credential file本文、Bearer token、secret-bearing resultを含めない。秘密値の供給が必要な場合は明示的に許可されたconsumer内の別経路で扱い、値をChatへ返すMCP toolは作らない。各siteのpluginはそのsiteに指定されたConnect経路を検証し、指定なしに他siteへ切り替えない。本人が明示的に経路変更を指示した場合は、その指定に従い記録/レビューする。具体的なtool schema/transportは実装前に確認し、推測しない。
 10. CIのsite jobは専用の3台のself-hosted runnerへtagで固定し、shared runnerにfallbackしない。既存のGitLab保護設定と本人指示に従い、manual/protected gateを新設必須化しない。現runnerのtag/project access設定が実行可能状態と確認され、本人指示が許すまで対象jobを起動しない。
 
 ## 4. セキュリティ・変更の境界
@@ -68,5 +68,5 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 - 3拠点のOS/ネットワークが未確認 → 推測で配備せず、ホスト別調査を受け入れ条件に追加。
 - Community利用者の2-cluster同一credentials file実例と公式Helm replica/credential Secret構成を区別して記録。既存tokenを3つの独立APIで使えることは設計推論であり、実site認証まで未確認。新規登録/追加tokenの承認gateは設けない。secret配布操作が必要な場合は対象siteと手順を親へ明示し、安全なhandoffを使う。
 - screenshot状態は登録/tokenの存在のみでデプロイ/認証確認ではない → 認証受け入れ条件を別途定義。
-- PP2→1Password plugin MCPのstdio downstream契約、MCP成功/エラー/通知のsecret-safe出力、既存外部認証/OS permissions、Connect site bindingが未記載 → Hub localstdio起動、metadata-only応答、独自認証/承認/権限昇格なし、指定site経路の確認を追記。PP2 core project IDは87779895と確認済み。
+- PP2 Hubからpluginへのstdio downstream呼び出し方向と、pluginからConnect RESTへのbackend経路、MCP成功/エラー/通知のsecret-safe出力、既存外部認証/OS permissions、Connect site bindingが未記載 → Hubがpluginへlocalstdioで `tools/list` / `tools/call` を送り、pluginが指定siteのConnect RESTへ接続する契約、metadata-only応答、独自認証/承認/権限昇格なし、指定site経路の確認を追記。PP2 core project IDは87779895と確認済み。
 - CI停止を目標状態と混同 → self-hosted runner 3台をsite別に使う目標へ改め、現snapshotでtagなし/project許可なしの事実と別担当設定を明記。
