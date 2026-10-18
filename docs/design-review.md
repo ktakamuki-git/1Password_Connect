@@ -8,13 +8,14 @@
 
 | 段階 | 現行成果SHA | レビュー結果 |
 |---|---|---|
-| 要件定義 | docs/requirements.md — 012f30f28c9554fd4e30f30052cb5f4b94c2b186 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
-| 概要設計 | docs/overview-design.md — 40ea97e07d5effb8742dac08ea8e810a687d55dc | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
-| 詳細設計 | docs/detailed-design.md — 4268322b33f8dc926ecf7005d47d15de9e2066c3 | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
-| 実装計画 | docs/implementation-plan.md — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3 | runtime-neutralなJSON site profile/Schemaを実装し、host-specific設定と配備をhost inventory後に限定。 |
-| テスト設計 | docs/test-design.md — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3 | JSON profile/Schema、既知invariant、placeholder、site別runtime試験を区別。Sync healthは実設定portで確認。 |
+| 要件定義 | docs/requirements.md — de6c791d59964fae7030b70853284c2b52261ed1 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
+| 概要設計 | docs/overview-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
+| 詳細設計 | docs/detailed-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
+| 実装計画 | docs/implementation-plan.md — de6c791d59964fae7030b70853284c2b52261ed1 | runtime-neutralなJSON site profile/Schemaを実装し、host-specific設定と配備をhost inventory後に限定。 |
+| テスト設計 | docs/test-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | JSON profile/Schema、既知invariant、placeholder、site別runtime試験を区別。Sync healthは実設定portで確認。 |
 
-これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。
+これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も含む。  
+共通template: profile `templates/connect-site-profile.example.json` — 17bd350a5b238eaaf61a4bd19ebab8fe3aefba49; schema — 5c6eac3d19c4254ffb2c6a3cf343b788a5139ef5; usage README — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3.
 
 ## 2. 独立レビュー指摘と修正
 
@@ -23,6 +24,7 @@
 3. **Sync health port** — 公式Connect containerのOP_HTTP_PORT defaultは8080。公式Helm chartではSyncのhealth portを8081に設定する。テストはgeneric defaultを決め打ちせず、選定manifestで設定したportに合わせる。[Connect configuration](https://www.1password.dev/connect/server-configuration) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
 4. **host inventoryとtemplate作成の分離** — secret-free、host-independent templateは各hostに接続できる前でも作成/静的検証できる。IP、runtime、volume path、resource limitなどsite-specific設定とcredential配置、実配備だけを各hostの確認後に行う。
 5. **ローカル環境** — MainUbutsu2 Project接続はMCPHub担当が並行対応中。ここでは既報のWSL拒否を迂回しておらず、ローカルrepo/testを未実施と区別する。
+6. **MiniPC-Oyama環境** — 最新のユーザー情報でWSL利用を確認した。Windows native前提を除外し、WSL distro/runtime/autostartは未確認として要件・設計・計画・テスト文書を更新した。
 
 ## 3. 設計全体の検査
 
@@ -36,7 +38,7 @@
 
 ## 4. 実施状態と次のgate
 
-詳細設計の残件は行78で修正し、旧停止条件が残っていないことを確認した。これを受けて、host/runtimeに依存しないsecret-free site profile、JSON Schema、使用上の注意を実装した。profile JSONのparseと主要invariant（CredentialMCP、API/Sync各1、同一release placeholder、secret値なし、site-local volume、public unauthenticated APIなし）を一時的な静的確認でpassした。これはローカルrepo上のテスト実施ではなく、完全なJSON Schema validatorの実行でもない。
+詳細設計の残件は行78で修正し、旧停止条件が残っていないことを確認した。これを受けて、host/runtimeに依存しないsecret-free site profile、JSON Schema、使用上の注意を実装した。profile JSON/schemaのparse、実装したSchema subsetに対する適合、主要invariant（CredentialMCP、API/Sync各1、同一release placeholder、secret値なし、site-local volume、public unauthenticated APIなし）、禁止値のnegative checksを一時的な静的確認でpassした。初回確認で`$schema` propertyの制約不一致を見つけ、Schemaに許可条件を追加して修正した。これはローカルrepo上のテスト実施でも完全なJSON Schema validatorの実行でもない。
 
 親が独立全体レビューできるよう設計段階SHAと指摘解消を記録した。Compose/Helmなどhost-specific manifest、実行方式、runtime valuesは対象hostのinventory後に決める。credential/tokenの配置には対象hostごとの安全なhandoff承認が必要で、各APIの認証・Sync状態は配備後に個別確認する。
 
