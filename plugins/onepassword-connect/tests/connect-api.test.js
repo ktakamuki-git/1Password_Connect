@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { performance } from 'node:perf_hooks';
 import test from 'node:test';
 import { createConnectApiClient } from '../src/connect-api.js';
 
@@ -24,6 +27,28 @@ function fakeResponse(status, payload, { jsonError, body } = {}) {
 
 function clientWithFetch(fetchImpl, env = VALID_ENV) {
   return createConnectApiClient({ env, fetchImpl });
+}
+
+async function startDelayedApi({ headersSent }) {
+  const observations = { requests: 0 };
+  const server = createServer((_request, response) => {
+    observations.requests += 1;
+    if (headersSent) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.flushHeaders();
+    }
+    // Intentionally leave the response unfinished until the client aborts.
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  return {
+    observations,
+    origin: `http://127.0.0.1:${server.address().port}`,
+    async close() {
+      server.closeAllConnections();
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    },
+  };
 }
 
 test('missing and invalid configuration fail closed without making an HTTP request', async () => {
@@ -57,6 +82,35 @@ test('network and timeout failures return safe status metadata', async (t) => {
       assert.equal(result.status, 'connect_unavailable');
       assert.ok(!JSON.stringify(result).includes(SECRET_CANARY));
       assert.ok(!JSON.stringify(result).includes(TEST_TOKEN));
+    });
+  }
+});
+
+test('the real 10-second request deadline aborts delayed headers and a stalled response body', { timeout: 30_000 }, async (t) => {
+  for (const headersSent of [false, true]) {
+    await t.test(headersSent ? 'response body wait' : 'response header wait', async () => {
+      const api = await startDelayedApi({ headersSent });
+      let timeoutSignal;
+      const client = createConnectApiClient({
+        env: { ...VALID_ENV, OP_CONNECT_HOST: api.origin },
+        fetchImpl: (url, options) => {
+          timeoutSignal = options.signal;
+          return fetch(url, options);
+        },
+      });
+      try {
+        const startedAt = performance.now();
+        const result = await client.listVaults();
+        const elapsedMs = performance.now() - startedAt;
+        assert.equal(result.status, 'connect_unavailable');
+        assert.ok(elapsedMs >= 9_000, `deadline fired too early: ${elapsedMs}ms`);
+        assert.ok(elapsedMs < 15_000, `deadline did not bound the wait: ${elapsedMs}ms`);
+        assert.equal(api.observations.requests, 1);
+        assert.equal(timeoutSignal.aborted, true);
+        assert.ok(!JSON.stringify(result).includes(TEST_TOKEN));
+      } finally {
+        await api.close();
+      }
     });
   }
 });
