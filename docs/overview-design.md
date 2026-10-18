@@ -51,7 +51,7 @@ No cache volume shared between sites
 
 ## 4. 技術選定の決め方
 
-Docker ComposeとKubernetesのどちらを使うかはOS/現状確認後に各拠点で決める。Docker Composeを採る場合は公式例を基にする。Kubernetesを採る場合は公式1Password Helm chartを候補とし、chartのconnect.replicasがruntime replica数を設定することを根拠にする。現状情報だけから「3拠点すべて同じ実行方式」とは仮定しない。[Get started](https://www.1password.dev/connect/get-started) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
+Docker ComposeとKubernetesのどちらを使うかはOS/現状確認後に各拠点で決める。Docker Composeを採る場合は公式例を基にする。Kubernetesを採る場合は公式1Password Helm chartを候補とし、chartのconnect.replicasがruntime replica数を設定することを根拠にする。現状情報だけから「3拠点すべて同じ実行方式」とは仮定しない。MiniPC-Oyamaはユーザー報告でWSL利用と確認したが、distribution名、コンテナ/Kubernetes runtime、自動起動は未確認である。Windows native向けの配備は前提にしない。[Get started](https://www.1password.dev/connect/get-started) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
 
 image tagは実装時に公式の対応版を調べて明示的に固定する。latest tagや過去の独自registry/承認JSONは使わない。片方の拠点だけを更新して動作差が生じないよう、同じConnect版を3拠点に揃える。
 

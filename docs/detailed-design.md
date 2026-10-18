@@ -8,9 +8,9 @@
 |---|---|---|---|---|---|
 | APPv4 | 未確定。実ネットワーク確認後に設定 | 1 | 1 | APPv4内のみ | APPv4上のアプリ |
 | MainUbutsu2 | 未確定。正式remote/host確認後に設定 | 1 | 1 | MainUbutsu2内のみ | MainUbutsu2上のアプリ |
-| MiniPC-Oyama | 未確定。host確認後に設定 | 1 | 1 | MiniPC-Oyama内のみ | MiniPC-Oyama上のアプリ |
+| MiniPC-Oyama (WSL) | 未確定。WSL distro/runtime/host network確認後に設定 | 1 | 1 | MiniPC-Oyama WSL内のみ | MiniPC-Oyama上のアプリ |
 
-OS/実行基盤、volume driver、host名/IP、TLS終端は未確認のため固定しない。Docker Compose/Kubernetesのmanifestは各環境の棚卸し後に選ぶ。
+MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribution名、自動起動、コンテナ実行方式は未確認。APPv4/MainUbutsu2を含め、volume driver、host名/IP、TLS終端も確定していないため固定しない。Docker Compose/Kubernetesのmanifestは各環境の棚卸し後に選ぶ。
 
 ## 2. 認証とVault境界
 

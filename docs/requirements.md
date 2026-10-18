@@ -41,7 +41,7 @@
 |---|---|---|
 | APPv4 | ユーザー報告ではnodepveのVM102、Ubuntu 24.04 base、起動済み、RAM 8–16 GiB | 現VMの識別、実OS、コンテナ/Kubernetes実装、IP/名前解決、接続経路、空き容量 |
 | MainUbutsu2 | 正式な `remote-wsl:Ubutsu2` hostは存在 | 対応ローカルrepo/フォルダ、実行可能な正式remote、OS/コンテナ環境、IP/接続 |
-| MiniPC-Oyama | 正式なMiniPC-Oyama remoteが存在 | 対応ローカルrepo/フォルダ、OS/コンテナ環境、IP/接続、既存workloadとの共存 |
+| MiniPC-Oyama | ユーザー報告ではWSLを利用。Windows native前提ではない | WSL distribution名、実OS/release、container/Kubernetes runtime、自動起動、IP/接続、既存workloadとの共存 |
 
 APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しない。Windows executorからの `wsl --list` は既報の `WSL Service E_ACCESSDENIED` を再現させる可能性があるため呼び出さず、別資格情報や昇格で迂回しない。現在のCodex project registryにはUbutsu2上の `/home/kiyohisa/Project/PDFtoCSV` (非Git)のみがあり、1Password Connect対応フォルダは確認できていない。
 
