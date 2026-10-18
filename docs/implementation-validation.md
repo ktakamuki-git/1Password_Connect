@@ -17,8 +17,6 @@ PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 
 ## MCP test traceability
 
-## MCP test traceability
-
 | 承認済みID | 実装テストと証拠 | 評価 |
 |---|---|---|
 | MCP-01 Tool discovery | plugin.test.js と hub-integration.test.js がtools/list、唯一のread-only tool、empty strict inputSchemaを検査 | mock/Hub sourceで確認 |
@@ -50,8 +48,6 @@ ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情
 
 ## Deployment plan traceability
 
-## Deployment plan traceability
-
 | 承認済みID | 結果 |
 |---|---|
 | DP-01 process/heartbeat | 未実施。Connect container/serviceを起動していない |
@@ -74,8 +70,6 @@ ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情
 - PP2 project 87779895 is private. Read-only Job Token inspection showed inbound scope limited to the allowlist, which contains only PP2 itself; Connect project 87779016 is not on it. No cross-project source fetch was attempted, no credentials were created, and no allowlist/scope was changed. The integration test remains skipped until PP2 grants read-only repository access to the Connect CI job token and the pipeline user has read access.
 - Previous Windows scratch results and the prior Ubutsu2 WSL Service E_ACCESSDENIED report are historical local checks, not evidence for this GitLab CI run. No alternate credentials or elevation were used to reach WSL.
 - 1Password secret/token values, credential files, and Vault item data were not retrieved, displayed, or committed. No Connect authentication, deployment, or 3-site live verification occurred.
-
-## 5段階設計成果
 
 ## 5段階設計成果
 
