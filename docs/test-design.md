@@ -7,9 +7,9 @@
 1. **単体/static tests:** manifest/設定の構文と静的制約をローカルrepoで検証。
 2. **配備確認:** 各hostでcontainer、volume、API/Sync healthが成立することを確認。
 3. **3拠点実動作:** 各siteのAPIが認証し、同じVaultを読み取れることを確認。
-4. **Self-hosted CI:** 3 site専用runnerごとのpipeline結果。shared runnerにfallbackしない。現在のrunner tag/project accessは未設定なので、外部担当の準備完了まで実行結果は保留。
+4. **Self-hosted CI:** 3 site専用runnerのsite tagでpipelineを実行し、shared runnerへfallbackしない。2026-10-18のpipeline 2960546091では3 site jobが成功。Hub sourceを使う1件はPP2 projectがprivateで、Connect projectのinbound job-token許可がないためskip。結果はdocs/implementation-validation.mdに記録する。
 
-このリポジトリの実行先local cloneは確認できていないため、以下はテスト計画であってテスト実施結果ではない。
+以下はテスト計画であり、実施結果はdocs/implementation-validation.mdに記録する。host-independentな一部static/unit testsはGitLab CIで実行済みだが、正式Ubutsu2 local clone、配備、3拠点live試験は未確認。
 
 ## 2. Static/unit test cases
 
@@ -23,7 +23,7 @@
 | ST-06 | Sync/API inner network | APIとSyncの通信はsite-local。Sync health/bus portをapp/publicへpublishしない |
 | ST-07 | Vault contract | 共通templateが許可Vaultのplaceholder/scopeを参照し、site-specific metadataも同じVault identity/read-only scopeを使う |
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致。MiniPC-OyamaはWSLのdistribution/runtime/autostart確認後に合格 |
-| ST-09 | Self-hosted runner routing | `appv4` / `main-ubutsu2` / `oyama-wsl` jobが対応tagのnon-shared runnerだけで動き、他site/shared runnerへfallbackしない。runner identity/tagをjob内で照合する |
+| ST-09 | Self-hosted runner routing | `appv4` / `ubutsu2` / `oyama-wsl` tagのjobが対応non-shared runnerだけで動き、他site/shared runnerへfallbackしない。Ubutsu2のRunner descriptionは `main-ubutsu2`。 |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 | ST-11 | Optional rootless health observer | `monitoring` profileで任意起動、UID 65532、read-only、cap_drop ALL、no-new-privileges。`TOKEN_NEEDED` は初回auth GET前のnot-readyを表し、observer unhealthyだけでstartup failureと判定しない |
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
@@ -33,7 +33,7 @@
 | ST-16 | MCP output secret hygiene | success/protocol error/tool error/notificationのHub向け出力とlog/audit/artifactは定義済み公開metadataのみ。raw `content`/`structuredContent`、secret、credential本文、tokenを漏らさず、secret-returning toolなし |
 | ST-17 | CI configuration alignment | job trigger/protectionは既存GitLab設定と本人指示に整合し、新たなmanual/protected必須gateを追加しない。site jobは対応するself-hosted runner tagへ固定し、shared/他site fallbackなし。設定が未準備なら利用不可として記録 |
 
-host-independent profile、Compose候補、MCP mock contractのST-01〜ST-08/ST-10〜ST-17はhost inventory前にローカル静的/unit testまたは設定レビューで確認できる。現状はテストsourceをGitLabへ保存した段階で、実行結果はない。ST-07のsite-specific scope metadataとendpoint/resource/volume、ST-08の実host情報は対象確認後に検査する。CI jobは3 self-hosted runnerへsite別割当とする。2026-10-18 snapshotではrunnerはonline/activeでもtagが空でproject accessがないため、ST-09の実行確認は別担当の設定準備後に限る。既存GitLab設定と本人指示の整合はST-17の設定レビューで確認する。
+Host-independent static/unit suiteはpipeline 2960546091で3 site runnerすべて成功した。Node testsは24 pass/0 fail/1 skip、Python testsは14/14、Compose configも成功。ST-09 runner routingは `appv4` / `ubutsu2` / `oyama-wsl` tagで確認。ST-07の実Vault scope metadataとendpoint/resource/volume、ST-08の実host identityは未検証。Hub integrationのskip理由と必要なread-only accessはdocs/implementation-validation.mdに記録する。
 
 ## 2.1 Hub相当clientから本repo pluginへのMCP unit/contract tests
 
@@ -106,7 +106,7 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
-- CIのsite jobは各self-hosted runner tagへ固定し、shared runnerを使わない。現在はtag/project accessの準備前なのでCI結果は未実施と記録する。
+- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。pipeline 2960546091で3 jobが成功。PP2 Hub integrationだけはprivate sourceへのread access不足によりskipし、job-token allowlist変更やcredential作成は行わない。
 - Hub相当client→本repo local stdio plugin→mock Connect RESTをcontract boundaryとし、PP2 core非変更・既存認証/OS権限を維持する。success/error/notificationとログを公開metadata onlyで検証し、secret-returning tool/human approvalを置かない。Connect RESTは通常plugin backendであり、Hubのplugin迂回fallbackだけを拒否する。指定route変更は許容・記録し、無指定の他site切替は拒否する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
