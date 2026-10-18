@@ -26,7 +26,7 @@
 6. APIは未認証で外部公開しない。各拠点で接続元を限定し、信頼ネットワーク外をまたぐ場合はTLSを使う。
 7. APPv3には配備しない。APPv4とAPPv3を識別できるホスト情報を確認してから変更する。
 8. 実配備と実動作を拠点別に検証し、単体/static test、配備、3拠点実動作を別々に記録する。
-9. PP2のアダプターがMCP JSON-RPC `tools/list` で許可ツールを確認し、allow-list済みのread-only toolに `tools/call` を使う。tool名/argument schema、protocol error、`isError`、構造化/非構造化結果を取り扱い、secret値や結果本文をログへ残さない。実際のplugin接続を作成・変更せず、未知のtool名やtransportを推測しない。
+9. PP2のアダプターがMCP JSON-RPC `tools/list` で許可ツールを確認し、allow-list済みのread-only toolに `tools/call` を使う。tool名/argument schema、protocol error、`isError`、構造化/非構造化結果を取り扱い、secret値や結果本文をログへ残さない。各siteのplugin MCP接続がsite-local Connect経路に結び付くことを実環境で確認し、中央または別siteへの経路へ黙って迂回しない。実際のplugin接続を作成・変更せず、未知のtool名やtransportを推測しない。
 10. CIのsite jobは専用の3台のself-hosted runnerへtagで固定し、shared runnerにfallbackしない。site単位のdeployはmanual/protected gateを持つ。実runnerのtag/project access設定を確認するまでは対象jobを実行しない。
 
 ## 4. セキュリティ・変更の境界
@@ -66,5 +66,5 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 - 3拠点のOS/ネットワークが未確認 → 推測で配備せず、ホスト別調査を受け入れ条件に追加。
 - Community利用者の2-cluster同一credentials file実例と公式Helm replica/credential Secret構成を区別して記録。既存tokenを3つの独立APIで使えることは設計推論であり、実site認証まで未確認。新規登録/追加tokenの承認gateは設けない。secret配布操作が必要な場合は対象siteと手順を親へ明示し、安全なhandoffを使う。
 - screenshot状態は登録/tokenの存在のみでデプロイ/認証確認ではない → 認証受け入れ条件を別途定義。
-- PP2→1Password plugin MCPの `tools/call` 経路が未記載 → tools/list/allow-list/read-only call/result/error契約を受け入れ条件と設計に追加。PP2のcodebase/具体tool schemaは未確認。
+- PP2→1Password plugin MCPの `tools/call` 経路とConnect site bindingが未記載 → tools/list/allow-list/read-only call/result/error契約、site-local Connect経路の検証、中央/他siteへのsilent bypass禁止を受け入れ条件と設計に追加。PP2のcodebase/具体tool schemaは未確認。
 - CI停止を目標状態と混同 → self-hosted runner 3台をsite別に使う目標へ改め、現snapshotでtagなし/project許可なしの事実と別担当設定を明記。
