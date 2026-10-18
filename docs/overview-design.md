@@ -52,7 +52,7 @@ PP2 ──MCP JSON-RPC tools/call──> [PP2 MCP adapter] ──existing plugin
                                       └─ content / structuredContent / isErrorを型付きで返す
 ```
 
-このadapterはMCPのcall境界であり、Connect REST APIそのものではない。3 siteのConnect配備・同期設計とPP2 plugin呼び出しは別レイヤーとして扱う。既存plugin接続の実際のtransport、server identity、tool名/schemaは稼働環境から確認するまで固定しない。MCP標準の `tools/list` とJSON-RPC 2.0 `tools/call` envelopeを使い、未確認tool名を推測しない。read-only allow-list、caller approval、error分類、timeout、結果/引数をsecret-safeに扱う。Direct RESTへのsilent fallbackや新credential発行は行わない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+このadapterはMCPのcall境界であり、Connect REST APIそのものではない。PP2の各site用plugin MCP接続が、そのsite-local Connect経路に結び付くことを実環境で追跡・確認する。中央または別siteのConnectへ向いている場合や経路が確認できない場合はsite-local準拠と見なさず、中央/他siteへのsilent bypassやDirect REST fallbackを行わない。既存plugin接続のtransport、server identity、tool名/schemaとConnect backendの対応は稼働環境から確認するまで固定しない。MCP標準の `tools/list` とJSON-RPC 2.0 `tools/call` envelopeを使い、未確認tool名を推測しない。read-only allow-list、caller approval、error分類、timeout、結果/引数をsecret-safeに扱う。新credential発行は行わない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 ## 3. ネットワーク
 
@@ -80,7 +80,7 @@ image tagは実装時に公式の対応版を調べて明示的に固定する�
 公式Helm deployment templateはConnect Deploymentのreplica数とAPI/Sync containerが参照するcredentials Secretを定義する。さらに公式1Password Communityの回答者は、自身の検証で別々の2 Kubernetes clusterにConnectを配備し、同じ `1password-credentials.json` を使ったと報告している。この報告は同一credentials fileでの複数cluster利用を支える実例だが、3 siteの検証結果やあらゆるserver構成の保証ではない。
 
 本設計ではCredentialMCP registration identity 1つ、runtime pair 3組を区別する。既存tokenが3つの独立APIで受け入れられる点は設計仮説として、配備後のsite別認証確認まで未実証とする。追加registration/tokenや権限の変更はこの設計に含めない。credential配布が必要な場合は対象siteと操作を親へ明示して安全なhandoffを行う。[1Password Community: multi-cluster report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm deployment template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
-仕様根拠はsecretを各hostへ置く承認を代替しない。CredentialMCPのcredential/tokenを各siteへ配置する前にユーザー/親の安全なhandoff承認を得る。配備後はAPI認証を各拠点で個別に検証する。
+この仕様根拠は実際のcredential配布を指示するものではない。credential配布が必要な場合は対象siteと操作を親へ示し、既存の安全なhandoffを使う。既存registration/token再利用に追加の登録・token承認gateは設けない。配備後はAPI認証を各拠点で個別に検証する。
 
 ## 6. 概要レビュー
 
@@ -88,6 +88,6 @@ image tagは実装時に公式の対応版を調べて明示的に固定する�
 - 「拠点間volume共有なし」がAPI/Sync間の必要なvolumeまで否定する読み違いを解消し、ローカル3 volumeにした。
 - 登録1件、runtime pair 3件、コンテナ6個を分けて記載した。
 - 2 clusterの同一credentials file使用はCommunity利用者の実例、Helm replicaは単一deploymentの公式設定として区別。3 siteでの既存token認証は設計仮説であり、実地試験前に未確認としている.
-- PP2→1Password plugin MCPはConnect RESTと混同せず、MCP tools/list / tools/call adapter境界と未確認のplugin schemaを明示した。
+- PP2→1Password plugin MCPはConnect RESTと混同せず、MCP tools/list / tools/call adapter契約に加え、plugin backendがsite-local Connectへ結び付くことの実環境確認とsilent bypass禁止を明記した。
 - CI targetをsite専用self-hosted runner 3台へ変更。現状runnerはonlineでもtag/project accessが未設定のため、別担当の設定完了前にpipelineは起動しない。
 - ネットワークやcontainer engine未確認のため、host/IP/port mappingは設計で決めず実調査へ送った。
