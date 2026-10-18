@@ -29,11 +29,11 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 1Password Communityの回答者は、自身が2つのKubernetes clusterそれぞれにConnectを配備し、同一 `1password-credentials.json` を使ったと報告している。公式Helm deploymentはreplica数を設定し、API/Sync containerが同じcredentials Secretをmountする。前者は2-clusterの実践報告、後者はHelmのdeployment/replica構成の根拠であり、3-site動作の保証や実地確認ではない。
 
 したがってCredentialMCPの登録identityとruntime pair 3組は分け、既存credential/tokenの再利用を設計前提として扱う。既存tokenが各site APIで受理されることは3 siteの認証結果が揃うまで仮説である。追加登録/tokenや権限変更は行わない。実際にcredentialをhostへ置く段階では、対象siteと操作を親へ示し既存の安全なhandoffを使う。[1Password Community: multi-cluster report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm deployment template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
-この仕様確認はcredential file/tokenを各hostへ配置する承認と異なる。secret placementはsiteごとに安全なhandoff承認を得てから行い、配備後に各APIを個別に認証試験する。
+この根拠は実際のcredential配布を指示するものではない。credential配布が必要な場合は対象siteと操作を親へ示し、既存の安全なhandoffを使う。既存registration/token再利用に追加の登録・token承認gateは設けない。配備後は各APIを個別に認証試験する。
 
 ## 2.1 PP2から1Password plugin MCPを呼ぶadapter
 
-PP2 adapterは既存1Password plugin MCP接続を通じてMCP toolを呼ぶ。Connect REST APIと同一のAPI/credentialと見なさず、PP2 repo/transport/server identity/tool schemaを確認するまではendpoint、認証方式、実tool名を固定しない。新規の1Password credentialやtokenは生成・設定しない。
+PP2 adapterは既存1Password plugin MCP接続を通じてMCP toolを呼ぶ。Connect REST APIと同一のAPI/credentialと見なさず、PP2 repo/transport/server identity/tool schemaを確認するまではendpoint、認証方式、実tool名を固定しない。各site用plugin MCP接続が該当site-local Connect APIをbackendとして使うか、実環境でroute/bindingを追跡・確認する。中央または別siteを経由する構成や未確認の経路はsite-local準拠と見なさず、silent bypassやDirect REST fallbackを禁止する。routeが確認できない場合は準拠と報告せず、親に例外/未確認状態を示す。新規の1Password credentialやtokenは生成・設定しない。
 
 1. serverのtool metadataを標準MCP `tools/list` で取得し、PP2側の固定allow-listと `inputSchema` に照合する。未知tool、write/delete tool、schema外argumentは拒否する。
 2. allow-list内toolだけをJSON-RPC 2.0 `tools/call` で呼ぶ。requestは `{"jsonrpc":"2.0","id":"<correlation-id>","method":"tools/call","params":{"name":"<allow-listed-tool>","arguments":{}}}` 形式。`id` はcallごとに一意とし、実際のtool名/argumentsは登録plugin metadataとPP2要求から決める。
@@ -102,5 +102,5 @@ GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner
 - 認証試験でtokenをCLI引数/ログに出したりVault内容を表示する危険を除き、GET /v1/vaultsの識別情報だけを見る方針へ変更。
 - write権限確認のために本Vaultを変更しない。権限metadataからread-onlyを確認する。
 - Community上の2-cluster同一credentials file実例と公式Helmのreplica設定を区別し、3-site API acceptanceは未実証の設計仮説とした。
-- PP2→plugin MCP adapterに `tools/list` / `tools/call`、schema/allow-list、JSON-RPC errorと `isError`、result redaction/confirmationを定義した。
+- PP2→plugin MCP adapterに `tools/list` / `tools/call`、schema/allow-list、JSON-RPC errorと `isError`、result redaction/confirmationを定義し、plugin backendがsite-local Connectへ結び付くことの実環境確認とsilent bypass禁止を追加した。
 - 3台のsite runnerを指定し、実際のtag/project eligibilityが無効のままであることと外部設定担当の境界を記載した。
