@@ -17,9 +17,24 @@ The API is published only as `127.0.0.1:8080:8080`. Sync and bus ports are not p
 
 The Compose file configures the documented manual bus peers on an internal port so container bus discovery does not require adding `NET_BROADCAST`. Keep the default Compose network private to this project.
 
-## Health
+## Health and first startup
 
-The official Connect API health endpoint reports its dependencies. The separate `connect-healthcheck` container checks that the API responds and its `sync` and `sqlite` dependencies are both `ACTIVE`. It runs as UID 65532 with a read-only root filesystem, no Linux capabilities, and no-new-privileges. Its healthy status is an aggregate observer; it does not set Docker health status on the Connect API or Sync containers individually. It never reads credentials or an API token.
+The official API `GET /health` endpoint reports dependency state and may return HTTP 200 with `sync: TOKEN_NEEDED` and `sqlite: ACTIVE` before the first authenticated API request. That is the documented pending state before initial sync, not by itself a startup failure. The official Kubernetes example documents that an authenticated `GET /v1/vaults` initializes the connection to 1Password.com and completes the first Vault sync.
+
+The `connect-healthcheck` observer checks that the API responds and `sync` plus `sqlite` are both `ACTIVE`. It runs as UID 65532 with a read-only root filesystem, no Linux capabilities, and no-new-privileges. While sync is `TOKEN_NEEDED`, the observer reports unhealthy/not-ready. Do not treat that status alone as a startup failure; use the ordered startup procedure below. It does not set Docker health status on the Connect API or Sync containers and never reads credentials or an API token.
+
+## Initial startup and app cutover
+
+1. Start the two Connect services and verify both processes/containers are running. Check API `GET /heartbeat` returns HTTP 200; this is a liveness check only.
+2. After the site's secret handoff has been separately approved, issue an authenticated API `GET /v1/vaults` with the existing token from the approved secret store. This starts the first sync. Do not put the token in shell history, command arguments, logs, or chat, and do not save the initial response body.
+3. Wait until API `GET /health` reports both `sync` and `sqlite` as `ACTIVE`. If the optional observer is enabled, its unhealthy state before this point is expected. It is not a startup gate.
+4. After readiness, compare only allowed Vault identifiers from an authenticated `GET /v1/vaults`; do not read item contents. Switch the site-local application to this API only after the health and Vault identity checks pass.
+
+The observer is optional under the `monitoring` Compose profile. Default Compose startup runs only Connect API and Sync (two containers per site; six total for three sites). Enabling the observer adds one optional monitoring container per site and does not modify, restart, block, or gate either Connect service.
+
+## Start the optional observer
+
+The health observer uses the `monitoring` Compose profile and is not part of the default Connect startup. Opt in with `docker compose --profile monitoring up -d`. The observer only reports readiness; it does not gate or control API/Sync startup.
 
 ## Static tests and local validation
 

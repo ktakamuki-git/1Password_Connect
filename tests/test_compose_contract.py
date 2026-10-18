@@ -77,8 +77,11 @@ class ComposeContractTests(unittest.TestCase):
         self.assertEqual(sync["OP_BUS_PORT"], "11223")
         self.assertEqual(sync["OP_BUS_PEERS"], "connect-api:11223")
 
-    def test_health_probe_is_non_root_and_restricted(self) -> None:
+    def test_health_probe_is_opt_in_and_does_not_gate_connect_startup(self) -> None:
         probe = self.services["connect-healthcheck"]
+        self.assertEqual(probe["profiles"], ["monitoring"])
+        self.assertNotIn("connect-healthcheck", self.services["connect-api"].get("depends_on", {}))
+        self.assertNotIn("connect-healthcheck", self.services["connect-sync"].get("depends_on", {}))
         self.assertEqual(probe["user"], "65532:65532")
         self.assertTrue(probe["read_only"])
         self.assertIn("ALL", probe["cap_drop"])

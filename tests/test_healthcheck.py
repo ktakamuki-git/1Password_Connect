@@ -16,10 +16,14 @@ SPEC.loader.exec_module(HEALTHCHECK)
 
 
 class FakeResponse:
-    status = 200
-
-    def __init__(self, payload: Any) -> None:
-        self.body = json.dumps(payload).encode("utf-8")
+    def __init__(
+        self,
+        payload: Any,
+        status: int = 200,
+        raw_body: bytes | None = None,
+    ) -> None:
+        self.status = status
+        self.body = raw_body if raw_body is not None else json.dumps(payload).encode("utf-8")
 
     def __enter__(self) -> "FakeResponse":
         return self
@@ -48,7 +52,7 @@ class HealthcheckTests(unittest.TestCase):
             )
         )
 
-    def test_inactive_sync_dependency_is_unhealthy(self) -> None:
+    def test_token_needed_is_not_ready_before_initial_authenticated_sync(self) -> None:
         payload = {
             "dependencies": [
                 {"service": "sync", "status": "TOKEN_NEEDED"},
@@ -59,6 +63,33 @@ class HealthcheckTests(unittest.TestCase):
             HEALTHCHECK.check_health(
                 endpoint="http://connect-api:8080/health",
                 opener=lambda *_args, **_kwargs: FakeResponse(payload),
+            )
+        )
+
+    def test_non_200_health_response_is_not_ready(self) -> None:
+        self.assertFalse(
+            HEALTHCHECK.check_health(
+                endpoint="http://connect-api:8080/health",
+                opener=lambda *_args, **_kwargs: FakeResponse({}, status=503),
+            )
+        )
+
+    def test_connection_failure_is_not_ready(self) -> None:
+        def fail_to_connect(*_args: Any, **_kwargs: Any) -> FakeResponse:
+            raise OSError("connection refused")
+
+        self.assertFalse(
+            HEALTHCHECK.check_health(
+                endpoint="http://connect-api:8080/health",
+                opener=fail_to_connect,
+            )
+        )
+
+    def test_malformed_json_is_not_ready(self) -> None:
+        self.assertFalse(
+            HEALTHCHECK.check_health(
+                endpoint="http://connect-api:8080/health",
+                opener=lambda *_args, **_kwargs: FakeResponse({}, raw_body=b"{not-json"),
             )
         )
 

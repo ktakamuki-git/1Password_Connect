@@ -16,7 +16,7 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 
 `deploy/docker/compose.yaml` はAPPv4/MainUbutsu2/MiniPC-Oyamaのいずれか一拠点に使う共通候補であり、実hostには未適用。公式 `1password/connect-api:1.8.3` と `1password/connect-sync:1.8.3` を同一networkで動かし、両方がCompose project-scoped `connect-data` named volumeを共有する。credential fileは必須の外部file path参照をread-only secret mountし、secret値やAPI tokenはファイルに含めない。APIのみ `127.0.0.1:8080` に公開し、sync/bus portはinternal networkだけにする。API/Sync busは公式manual configurationでservice peerを指定する。
 
-公式Connect API image内にroot health commandがあると仮定しない。`connect-healthcheck` は別のPython containerでAPI `GET /health` を読み、`sync` と `sqlite` が`ACTIVE`の時だけhealthyにする。probeはUID 65532で動かし、read-only filesystem、全capabilities drop、no-new-privilegesを設定する。これはAPI/Syncコンテナ個別のDocker health stateではなくaggregate observer serviceである。実際のCompose/host互換性、localhost route、secret file読取permissionは各siteのruntime確認後に静的/実動作検証する。
+公式Connect API image内にroot health commandがあると仮定しない。`connect-healthcheck` は別のPython containerでAPI `GET /health` を読み、`sync` と `sqlite` が`ACTIVE`の時だけhealthyにする。probeはUID 65532で動かし、read-only filesystem、全capabilities drop、no-new-privilegesを設定する。observerは `monitoring` Compose profileで任意起動し、Connect API/Syncの起動や相互接続を制御しない。各siteでobserverを有効にした場合は6つのConnect本体に最大3つのobserverが加わる。初回起動時、API `/health` がHTTP 200でも `sync: TOKEN_NEEDED` と `sqlite: ACTIVE` を返すことがある。これは初回の認証GETで1Password同期を開始する前の待機状態であり、起動失敗ではない。observerは `TOKEN_NEEDED` 中はunhealthyを示すが、それ単独で起動失敗と判断しない。実際のCompose/host互換性、localhost route、secret file読取permissionは各siteのruntime確認後に静的/実動作検証する。
 
 ## 2. 認証とVault境界
 
@@ -59,15 +59,16 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 
 各拠点を一つずつ、ユーザーが承認した安全なsecret handoff後に確認する。tokenはshell historyやコマンド出力へ書かない。
 
-1. API healthを内部から確認する。API /health が成功し、API /heartbeatがhealthyなこと。
-2. Sync /health が成功し、Sync依存がactiveであることを確認する。health portをhost外へ開放しない。
-3. 同じ拠点内からBearer tokenでAPI GET /v1/vaultsを実行し、期待Vaultの識別情報だけを比較する。token文字列もitem valuesも出力しない。[API reference](https://www.1password.dev/connect/api-reference)
-4. 既存read-only scopeの確認は権限metadataで行い、実Vault上のwrite/deleteを試験しない。
-5. 結果をhost名、image version、API/Sync health、Vault ID一致、時刻だけで記録する。
+1. API/Sync process/container statusを確認し、API `GET /heartbeat` がHTTP 200を返すことを確認する。これはliveness確認であり、Vault認証や初回同期の完了を示さない。[Get heartbeat](https://www.1password.dev/connect/api-reference/get-heartbeat)
+2. siteごとに承認済みの安全なsecret handoffを使い、既存Bearer tokenでAPI `GET /v1/vaults` を実行する。この初回認証GETが1Password.comへの接続と初回Vault同期を開始する。tokenをshell history、CLI引数、ログ、画面、チャットに出さず、初回応答本文も記録しない。[Official Kubernetes example](https://github.com/1Password/connect/blob/main/examples/kubernetes/README.md) / [API reference](https://www.1password.dev/connect/api-reference/get-vaults)
+3. API `GET /health` の `sync` と `sqlite` がともに `ACTIVE` になるまで待つ。初回認証GET前の `sync: TOKEN_NEEDED` とobserverのunhealthyは想定内のpending状態であり、それ単独では起動失敗を意味しない。認証GET後もinactiveのまま、heartbeat失敗、または認証要求失敗の場合はアプリを切り替えずsecretを表示しない手順で調査する。[Get server health](https://www.1password.dev/connect/api-reference/get-server-health)
+4. ACTIVE確認後に `GET /v1/vaults` のVault識別情報だけを許可済み値と比較し、item contentsを取得・表示しない。
+5. healthとVault identityが確認できた後に限り、site-localアプリをlocal APIへ切り替える。scope metadataでread-onlyを確認し、実Vaultへのwrite/deleteを試験しない。
+6. 結果をhost名、image version、heartbeat/health/auth結果、Vault ID一致、時刻だけで記録する。
 
 ## 6. 初期同期、障害、rollback
 
-- 初回syncが完了するまでAPIをアプリ向けに公開しない。未同期またはtoken不正ならfail-closedとする。
+- APIプロセスの起動とVault readinessを分ける。初回はprocess/heartbeatを確認し、承認済み認証GETで同期を開始してから `/health` の `sync` / `sqlite` が `ACTIVE` になるまでアプリを切り替えない。初回の `TOKEN_NEEDED` / observer unhealthyだけでは失敗と断定しない。認証GETの失敗や、GET後もreadinessが成立しない場合はアプリ切替を止めて調査する。
 - site A/B/Cの同期状態とhealthを個別に確認する。あるsiteの成功から残りsiteの成功を推定しない。
 - runtime更新は3 siteで同一versionを維持し、1拠点ずつ実施。secret変更は伴わせない。
 - rollback時は当該siteのcontainer/manifestだけを前版へ戻す。共有先を伴わないsite-local volumeは削除しない。

@@ -24,7 +24,7 @@
 
 1. `templates/connect-site-profile.example.json` とJSON Schemaは、runtime-neutralなsite入力契約として維持する。
 2. 公式Docker Compose例を基にした一site候補を `deploy/docker/compose.yaml` に実装する。Connect API/Syncは同じ公式Connect release `1.8.3`、同じsite-local encrypted data volume、必須のread-only credentials file reference、internal manual busを使う。APIのhost bindは `127.0.0.1:8080` のみ。
-3. Official Connect image内でrootを使うHTTP probeを仮定せず、別のhealthcheck serviceをUID 65532で実行する。API `/health` の `sync` と `sqlite` dependencyが `ACTIVE` であることを標準libraryだけで確認する。probe containerはread-only、capabilityなし、no-new-privilegesとする。
+3. Official Connect image内でrootを使うHTTP probeを仮定せず、別のhealthcheck serviceをUID 65532で実行する。API `/health` の `sync` と `sqlite` dependencyが `ACTIVE` であることを標準libraryだけで確認する。probeは任意の `monitoring` profileで起動し、API/Sync本体をgateしない。初回auth GET前の `TOKEN_NEEDED` はpendingであり、observer unhealthy単独では失敗扱いしない。
 4. `tests/` にYAML contract testとhealth response unit testを保存する。GitLab CIは使用せず、テストは対応clone上で明示的に実行する。
 5. Compose候補/テストの追加は実hostへの適用ではない。hostのDocker Compose/runtime・loopback到達性確認と、credential fileの別途承認済みsafe handoffが揃うまで起動しない。
 
@@ -50,7 +50,7 @@
 
 実環境と安全なcredential handoffの承認後、一siteずつ進める。最初はAPPv4を候補にするがVM102を正式確認してからにする。次にMainUbutsu2、最後にMiniPC-Oyamaを個別配備する。
 
-各siteで以下を別個に記録する: API health、Compose候補ではaggregate observerとSync dependency status (他runtimeは選定済みhealth方式)、既存tokenの認証成否、Vault識別子一致、読み取りスコープ、アプリからlocal APIへの経路、APIにpublic経路がないこと、image SHA/tag。testにVault write/deleteを含めない。
+各siteで順番を守って確認する: API/Sync processとAPI `/heartbeat`、承認済みsafe handoffを使う既存tokenでの認証 `GET /v1/vaults`（初回syncを開始）、API `/health` のsync/sqlite `ACTIVE`、Vault識別情報、site-local app cutover。初回認証GET前の `TOKEN_NEEDED` / observer unhealthy単独を起動失敗としない。observerは任意起動であり、health failureがAPI/Syncの起動制御に使われることはない。結果には読み取りスコープ、アプリ経路、public exposureなし、image SHA/tagも記録する。testにVault write/deleteを含めない。
 
 三siteの実動作が全部成功するまで「完了」と報告しない。認証失敗、Sync停滞、version差、host identity不一致、public exposureの疑いがある場合はそのsiteを閉じて親に報告する。
 

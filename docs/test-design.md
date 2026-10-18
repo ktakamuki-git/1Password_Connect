@@ -25,7 +25,7 @@
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致。MiniPC-OyamaはWSLのdistribution/runtime/autostart確認後に合格 |
 | ST-09 | CI avoidance | GitLab CI/jobs/runners disabledのread-only project settings確認。CI file, pipeline trigger, runner commandを追加しない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
-| ST-11 | Rootless health monitor | sidecarがUID 65532、read-only filesystem、cap_drop ALL、no-new-privilegesであり、API /healthのsync/sqliteがACTIVEの時だけhealthy |
+| ST-11 | Optional rootless health observer | `monitoring` profileで任意起動、UID 65532、read-only、cap_drop ALL、no-new-privileges。`TOKEN_NEEDED` は初回auth GET前のnot-readyを表し、observer unhealthyだけでstartup failureと判定しない |
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
 | ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
 | ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
@@ -38,24 +38,23 @@ host-independent profileとCompose候補のST-01〜ST-06/09/10〜14はhost inven
 
 | ID | 確認 | 方法/期待結果 |
 |---|---|---|
-| DP-01 | process/container status | APIとSyncが起動。予期せぬrestart loopなし |
-| DP-02 | API health | internal endpoint /health が成功し、response dependenciesのsync/sqliteがACTIVE |
-| DP-03 | Sync health | Compose候補ではrootless observer serviceがhealthy。別runtimeの場合は、実装されたhealth方式でSync readinessを確認し、portをhost外へ公開しない |
-| DP-04 | Auth | local APIへ既存Bearer tokenでGET /v1/vaults。2xx。token文字列は画面/ログに表示しない |
-| DP-05 | Vault identity | レスポンスのVault ID/nameだけを許可済み値と比較。item contentsは取らない |
-| DP-06 | App routing | site-localアプリのhost設定がsite-local API endpointを指す |
-| DP-07 | read-only boundary | 1Password側scope metadataでread-only確認。実Vaultへwrite/deleteを送って試験しない |
-| DP-08 | exposure | 外部経路から接続不能かつsite内の許可app hostからだけ到達 |
-| DP-09 | cache isolation | 各site固有のdata volumeで稼働。他site volume mountまたは共有NFSがない |
-| DP-10 | evidence | host識別子、時間、image version、health/auth result、Vault identifierだけ記録 |
+| DP-01 | Process/liveness | APIとSync process/containerが起動し、API `/heartbeat` が200。これはVault readinessを証明しない |
+| DP-02 | 初回認証と同期開始 | 承認済みの既存Bearer tokenでlocal API `GET /v1/vaults`。このGETが初回syncを開始する。token/応答本文は記録・表示しない |
+| DP-03 | Sync readiness | DP-02後にAPI `/health` のsync/sqliteがともに `ACTIVE` になる。DP-02前の `TOKEN_NEEDED` とoptional observerのunhealthyはpendingであり、単独でstartup failureと判定しない。Sync/bus portはhost外へ公開しない |
+| DP-04 | Vault identity | readiness後の認証GETでVault ID/nameだけを許可済み値と比較。item contentsを取らない |
+| DP-05 | App cutover | readiness・Vault identity確認後、site-localアプリがsite-local API endpointを指す |
+| DP-06 | Read-only boundary | 1Password側scope metadataでread-only確認。実Vaultへwrite/deleteを送って試験しない |
+| DP-07 | Exposure | 外部経路から接続不能かつsite内の許可app hostからだけ到達 |
+| DP-08 | Cache isolation | 各site固有のdata volumeで稼働。他site volume mountまたは共有NFSがない |
+| DP-09 | Evidence | host識別子、時間、image version、heartbeat/health/auth result、Vault identifierだけ記録 |
 
-DP-04は健康状態と認証を別に確認する。health endpointだけの成功をVault authの証拠としない。DP-07はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
+Compose observerは任意の `monitoring` profileで起動し、Connect本体の起動をgateしない。DP-03の前にunhealthyを示しても、それだけを初回起動失敗としない。DP-06はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
 
 ## 4. Negative/rollback tests
 
 - tokenなし/不正tokenのAPI要求は401/unauthorizedで拒否されることを確認する。ただし実secretをlogに残さない。
 - 非許可ネットワークからAPIへ接続できないことを確認する。
-- initial sync失敗時はAPIをアプリ向けに有効化せず、diagnostic logをsecret scrubした形で保存する。
+- 初回 `/health` の `sync: TOKEN_NEEDED` は認証GET前のpending状態として扱い、observer unhealthyだけで起動失敗と判定しない。認証GETが失敗する、heartbeatが失敗する、または認証GET後もreadinessが成立しない場合はアプリを未切替のままにし、diagnostic logをsecret scrubした形で調べる。
 - 一siteを停止/rollbackしても残りsiteとそのvolumeに副作用がないことを確認する。volume deletionはtestに含めない。
 - 作業後にGit branch diffからsecret値・host access token・public addressを再確認する。
 
@@ -82,5 +81,5 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
 - GitLab pipeline/runnerを使わない。
-- API healthのみで認証成功と誤認せず、Sync health・Vault identity・local routingも別項目にした。
+- API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。

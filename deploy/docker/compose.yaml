@@ -28,6 +28,8 @@ services:
       - connect-data:/home/opuser/.op/data
 
   connect-healthcheck:
+    profiles:
+      - monitoring
     image: python:3.14.8-alpine3.24
     user: "65532:65532"
     read_only: true
