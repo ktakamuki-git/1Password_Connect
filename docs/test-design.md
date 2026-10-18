@@ -15,18 +15,18 @@
 
 | ID | 検査 | 合格条件 |
 |---|---|---|
-| ST-01 | Compose YAML parseまたはHelm values/template | syntax errorなし。各siteでAPI+Sync pairが1つ |
+| ST-01 | Compose YAML parseまたはHelm values/template | syntax errorなし。共通templateにAPI+Sync pairが1つあり、site別設定は各拠点の同一templateから生成 |
 | ST-02 | Container version一致 | APIとSyncが公式に対応する同一Connect release |
 | ST-03 | Volume mapping | 同一siteのAPI/Syncが同じencrypted data pathをmountし、他siteを参照しない |
 | ST-04 | Secret hygiene | credentials/token/private key実値、Base64実値、output fixtureがGit diff/tracked file/logにない |
 | ST-05 | API exposure | API bind/listenerがsite/host local onlyまたはprivate allow-list。public unauthenticated exposureなし |
 | ST-06 | Sync/API inner network | APIとSyncの通信はsite-local。Sync health/bus portをapp/publicへpublishしない |
-| ST-07 | Vault contract | 三siteのdeployment metadataが同じ許可Vault identityを示し、対象範囲のread-only設定が一致 |
+| ST-07 | Vault contract | 共通templateが許可Vaultのplaceholder/scopeを参照し、site-specific metadataも同じVault identity/read-only scopeを使う |
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致 |
 | ST-09 | CI avoidance | GitLab CI/jobs/runners disabledのread-only project settings確認。CI file, pipeline trigger, runner commandを追加しない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 
-秘密を含まないhost-independent templateはsite inventory前にST-01〜ST-06/09/10を静的検証できる。site-specific endpoint/resource/volume valuesの確認とST-08は該当hostを確認してから行う。GitLab CIは使わず、local repositoryが利用可能になってからローカルtoolingで実施する。
+秘密を含まないhost-independent templateはsite inventory前にST-01〜ST-06/09/10を静的検証できる。ST-07の共通template scopeも検査できるが、site-specific scope metadataとendpoint/resource/volume values、ST-08は該当host/1Password metadata確認後に検査する。GitLab CIは使わず、local repositoryが利用可能になってからローカルtoolingで実施する。
 
 ## 3. 配備 smoke test cases
 
