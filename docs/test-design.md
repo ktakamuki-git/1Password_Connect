@@ -24,14 +24,14 @@
 | ST-07 | Vault contract | 共通templateが許可Vaultのplaceholder/scopeを参照し、site-specific metadataも同じVault identity/read-only scopeを使う |
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致。MiniPC-OyamaはWSLのdistribution/runtime/autostart確認後に合格 |
 | ST-09 | Self-hosted runner routing | `appv4` / `main-ubutsu2` / `oyama-wsl` jobが対応tagのnon-shared runnerだけで動き、他site/shared runnerへfallbackしない。runner identity/tagをjob内で照合する |
-| ST-15 | PP2 MCP adapter contract | `tools/list` metadataとallow-list/schema、JSON-RPC `tools/call` envelope、protocol error / `isError`, `content`/`structuredContent`を扱い、unknown/write toolを拒否 |
-| ST-16 | MCP secret hygiene | call arguments/result/item content/token/credential fileをlogs/artifacts/auditへ出さない。最低限のcorrelation/status metadataだけを記録する |
-| ST-17 | Site deployment gate | 各site deploy jobがprotected/manualで、site tagに固定され、未設定のrunnerやshared runnerを使わない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 | ST-11 | Optional rootless health observer | `monitoring` profileで任意起動、UID 65532、read-only、cap_drop ALL、no-new-privileges。`TOKEN_NEEDED` は初回auth GET前のnot-readyを表し、observer unhealthyだけでstartup failureと判定しない |
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
 | ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
 | ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
+| ST-15 | PP2 MCP adapter contract | `tools/list` metadataとallow-list/schema、JSON-RPC `tools/call` envelope、protocol error / `isError`, `content`/`structuredContent`を扱い、unknown/write toolを拒否 |
+| ST-16 | MCP secret hygiene | call arguments/result/item content/token/credential fileをlogs/artifacts/auditへ出さない。最低限のcorrelation/status metadataだけを記録する |
+| ST-17 | Site deployment gate | 各site deploy jobがprotected/manualで、site tagに固定され、未設定のrunnerやshared runnerを使わない |
 
 host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-10〜ST-17はhost inventory前にローカル静的/unit testで検証できる。現状はテストsourceをGitLabへ保存した段階で、実行結果はない。ST-07のsite-specific scope metadataとendpoint/resource/volume、ST-08の実host情報は対象の確認後に検査する。CIは3 self-hosted runner専用に設計する。2026-10-18 snapshotではrunnerはonline/activeだがtagが空でproject accessもないため、ST-09/17の実行は別担当の設定確認後に限る。
 
@@ -45,6 +45,7 @@ host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-
 | MCP-04 | Result/errors | protocol `error`、`result.isError`、success `content`、optional `structuredContent`、timeoutを別状態としてPP2 callerへ返す |
 | MCP-05 | Secret-safe output | call inputs/results/item fields/tokens/credentialsをlog/audit/artifactへ出さない。必要な最小read responseだけをcallerへ返す |
 | MCP-06 | Human approval | secret-bearing read toolはユーザー確認を経てからcallする。denyはserver callなしで終了 |
+| MCP-07 | Site-local Connect binding | site selectorが対応するsite-local Connect backendに結び付き、中央/他site routeへsilent bypassしない。unknown/unverified bindingは拒否またはunverifiedで返す |
 
 これらはmock MCP server/transportで実行し、live plugin/authは使わない。実際のplugin schema/transportはPP2 repo/connectionが特定された後にcontract fixtureを確定する。
 
@@ -63,6 +64,7 @@ host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-
 | DP-07 | Exposure | 外部経路から接続不能かつsite内の許可app hostからだけ到達 |
 | DP-08 | Cache isolation | 各site固有のdata volumeで稼働。他site volume mountまたは共有NFSがない |
 | DP-09 | Evidence | host識別子、時間、image version、heartbeat/health/auth result、Vault identifierだけ記録 |
+| DP-10 | PP2 plugin route | 対象siteのplugin MCP backendがそのsite-local Connectへ結び付くことを実環境で追跡確認。中央/他site経由や未確認routeはpassにしない |
 
 Compose observerは任意の `monitoring` profileで起動し、Connect本体の起動をgateしない。DP-03の前にunhealthyを示しても、それだけを初回起動失敗としない。DP-06はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
 
@@ -103,6 +105,6 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
 - CIのsite jobは各self-hosted runner tagへ固定し、shared runnerを使わない。現在はtag/project accessの準備前なのでCI結果は未実施と記録する。
-- PP2 MCP adapterはtools/list/tools/callとerror/result handlingをmockで試験し、live plugin testとは別に報告する。
+- PP2 MCP adapterはtools/list/tools/callとerror/result handlingをmockで試験し、site route selectionの中央/他site silent bypassもnegative testする。live plugin route binding確認はsiteごとの実環境試験として別に報告する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
