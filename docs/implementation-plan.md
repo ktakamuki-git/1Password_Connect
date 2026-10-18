@@ -20,10 +20,12 @@
 3. 公式コミュニティスタッフ回答で同一Secrets Automation workflowの複数deployment利用を確認済み。CredentialMCP一登録/既存tokenを3siteで使い、別登録/tokenは増やさない。
 4. 各siteへ秘密を渡す場合は一siteずつ承認済みのsafe handoffを使う。OS file permission/secret storeを設定し、Gitやchatに戻さない。
 
-## Phase 3 — host-independent template (設計レビュー完了後)
+## Phase 3 — host-independent template
 
-1. secret value、host名/IP、port mapping、resource limit、site固有volume pathを含めない共通templateを作成する。実行方式は既存repo/host inventoryと整合する選択肢にし、実機未接続でも記述できる共通部分だけを実装する。
-2. templateの作成だけでは実機への配置・起動を行わない。
+1. `templates/connect-site-profile.example.json` とJSON Schemaを共通profileとして使う。runtime、公式imageのrelease、credentials file/tokenの安全な参照、Vault識別子、同一拠点内volume共有、ネットワーク境界、検証statusを表現する。
+2. profileはruntime-neutralな入力契約であり、Compose/Helm manifestそのものではない。host名/IP、port mapping、resource limit、site固有volume path、secret値は含めず、実行方式は各host棚卸し後に選ぶ。
+3. 各siteへコピーして使う際も、credential値ではなくhandoff先やsecret storeの参照だけを記載する。未確定placeholderは棚卸しと承認後に置換する。
+4. profile作成だけでは実機への配置・起動を行わない。JSON/Schemaのローカル検証は対応repoが利用可能になってから実施する。
 
 ## Phase 4 — hostごとのruntime設定と配備
 
