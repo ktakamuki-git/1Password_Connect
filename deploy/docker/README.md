@@ -34,7 +34,13 @@ The observer is optional under the `monitoring` Compose profile. Default Compose
 
 ## Start the optional observer
 
-The health observer uses the `monitoring` Compose profile and is not part of the default Connect startup. Opt in with `docker compose --profile monitoring up -d`. The observer only reports readiness; it does not gate or control API/Sync startup.
+Run this command from the repository root to start the optional health observer with the `monitoring` Compose profile:
+
+```sh
+docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yaml --profile monitoring up -d
+```
+
+The observer only reports readiness; it does not gate or control API/Sync startup.
 
 ## Static tests and local validation
 
