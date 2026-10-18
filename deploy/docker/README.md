@@ -57,7 +57,7 @@ After separate host/runtime and credential-file handoff checks, Compose syntax c
 docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yaml config
 ```
 
-Tests require Python 3.10 or later. Do not report the saved tests as passing until that test command is actually run. Do not run any GitLab pipeline or runner.
+Tests require Python 3.10 or later. Do not report the saved tests as passing until that test command is actually run. The intended GitLab pipeline uses three dedicated self-hosted runners with site-specific tags (`appv4`, `main-ubutsu2`, `oyama-wsl`); shared runners are not used, and site deployments are manual/protected. As of 2026-10-18 the registered group runners have no tags and this project has no runner access, while project jobs/builds are disabled. Runner/tag/access settings belong to the separate owner and are not changed here. Do not start a pipeline until that setup is confirmed read-only.
 
 ## Official references
 
