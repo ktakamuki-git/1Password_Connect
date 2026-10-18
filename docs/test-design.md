@@ -15,8 +15,8 @@
 
 | ID | 検査 | 合格条件 |
 |---|---|---|
-| ST-01 | Common site profile JSON + JSON Schema | 両ファイルをparseでき、profileがschemaに適合する。未確定値はplaceholderとして残る |
-| ST-02 | Container version一致 | API/Syncのimage参照が同一の固定Connect release placeholderを使い、latestを使わない |
+| ST-01 | JSON profile/schemaとCompose YAMLのparse | 3つの設定ファイルがparseでき、profileがschemaに適合する |
+| ST-02 | Container version一致 | 公式API/Sync imageが同じ固定release tag 1.8.3を使い、latestを使わない |
 | ST-03 | Volume mapping | 同一siteのAPI/Syncが同じencrypted data pathをmountし、他siteを参照しない |
 | ST-04 | Secret hygiene | credentials/token/private key実値、Base64実値、output fixtureがGit diff/tracked file/logにない |
 | ST-05 | API exposure | API bind/listenerがsite/host local onlyまたはprivate allow-list。public unauthenticated exposureなし |
@@ -25,8 +25,12 @@
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致。MiniPC-OyamaはWSLのdistribution/runtime/autostart確認後に合格 |
 | ST-09 | CI avoidance | GitLab CI/jobs/runners disabledのread-only project settings確認。CI file, pipeline trigger, runner commandを追加しない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
+| ST-11 | Rootless health monitor | sidecarがUID 65532、read-only filesystem、cap_drop ALL、no-new-privilegesであり、API /healthのsync/sqliteがACTIVEの時だけhealthy |
+| ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
+| ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
+| ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
 
-秘密を含まないhost-independent profileはsite inventory前にJSON/Schema、既知invariant、placeholder、API/Sync image releaseの整合性を静的検証できる。ST-07の共通profile scopeも検査できるが、site-specific scope metadataとendpoint/resource/volume values、ST-08は該当host/1Password metadata確認後に検査する。GitLab CIは使わず、local repositoryが利用可能になってからローカルtoolingで実施する。
+host-independent profileとCompose候補のST-01〜ST-06/09/10〜14はhost inventory前にローカル静的/unit testで検証できる。ただし現状はテストコードをGitLabへ保存した段階であり、実行結果は未取得である。ST-07のsite-specific scope metadataとendpoint/resource/volume values、ST-08は該当host/1Password metadata確認後に検査する。GitLab CIは使わない。
 
 ## 3. 配備 smoke test cases
 

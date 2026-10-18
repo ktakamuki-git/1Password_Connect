@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+1password-credentials.json
+*.pem
+*.key
+*.p12
+__pycache__/
+*.py[cod]
+.pytest_cache/

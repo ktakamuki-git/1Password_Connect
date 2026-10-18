@@ -20,16 +20,17 @@
 3. 公式コミュニティスタッフ回答で同一Secrets Automation workflowの複数deployment利用を確認済み。CredentialMCP一登録/既存tokenを3siteで使い、別登録/tokenは増やさない。
 4. 各siteへ秘密を渡す場合は一siteずつ承認済みのsafe handoffを使う。OS file permission/secret storeを設定し、Gitやchatに戻さない。
 
-## Phase 3 — host-independent template
+## Phase 3 — common profile and Docker Compose candidate
 
-1. `templates/connect-site-profile.example.json` とJSON Schemaを共通profileとして使う。runtime、公式imageのrelease、credentials file/tokenの安全な参照、Vault識別子、同一拠点内volume共有、ネットワーク境界、検証statusを表現する。
-2. profileはruntime-neutralな入力契約であり、Compose/Helm manifestそのものではない。host名/IP、port mapping、resource limit、site固有volume path、secret値は含めず、実行方式は各host棚卸し後に選ぶ。
-3. 各siteへコピーして使う際も、credential値ではなくhandoff先やsecret storeの参照だけを記載する。未確定placeholderは棚卸しと承認後に置換する。
-4. profile作成だけでは実機への配置・起動を行わない。JSON/Schemaのローカル検証は対応repoが利用可能になってから実施する。
+1. `templates/connect-site-profile.example.json` とJSON Schemaは、runtime-neutralなsite入力契約として維持する。
+2. 公式Docker Compose例を基にした一site候補を `deploy/docker/compose.yaml` に実装する。Connect API/Syncは同じ公式Connect release `1.8.3`、同じsite-local encrypted data volume、必須のread-only credentials file reference、internal manual busを使う。APIのhost bindは `127.0.0.1:8080` のみ。
+3. Official Connect image内でrootを使うHTTP probeを仮定せず、別のhealthcheck serviceをUID 65532で実行する。API `/health` の `sync` と `sqlite` dependencyが `ACTIVE` であることを標準libraryだけで確認する。probe containerはread-only、capabilityなし、no-new-privilegesとする。
+4. `tests/` にYAML contract testとhealth response unit testを保存する。GitLab CIは使用せず、テストは対応clone上で明示的に実行する。
+5. Compose候補/テストの追加は実hostへの適用ではない。hostのDocker Compose/runtime・loopback到達性確認と、credential fileの別途承認済みsafe handoffが揃うまで起動しない。
 
 ## Phase 4 — hostごとのruntime設定と配備
 
-1. 実調査に基づきsite別にDocker ComposeまたはKubernetes/公式Helm chartを選ぶ。既存runtimeに合わせ、全hostへ同じ方式を強制しない。
+1. Docker Composeを最小候補として先に用意した。各siteの現行runtimeがCompose対応か確認し、既存の運用に合わないsiteだけは理由を記録して他方式を選ぶ。全hostへ同じ方式を強制しない。
 2. 同じ公式Connect versionを固定し、API+Sync pair、同拠点のみで共有するencrypted data volume、site-local API endpoint、secret file mount、health checkを定義する。
 3. API公開範囲はアプリhost/site内だけ。host内loopbackまたはprivate network、firewall allow-list、必要ならTLSを明記する。Public unauthenticated accessは作らない。
 4. root ignore rulesを設定し、credentials/token/cert/private keyの実値がGitに入らないようにする。既存READMEは意図的に上書きしない。
@@ -37,10 +38,10 @@
 
 ## Phase 5 — ローカル検証（GitLab CIなし）
 
-実際の対応local repositoryが開ける場合だけ、公式ローカルtoolingを使う。失敗した場合もsecret値を表示しない。CI pipeline/runnerは起動しない。
+実際の対応local repositoryが開ける場合、GitLabへ保存したテストコードをローカルで実行する。失敗した場合もsecret値を表示しない。GitLab CI pipeline/runnerは起動しない。
 
-- YAML/Compose設定の構文検証とCompose config。
-- Helmを使うsiteはhelm lint、helm template、 chart/schema version確認。
+- `python -m pip install -r tests/requirements.txt` の後、`python -m unittest discover -s tests -v` でCompose契約/healthcheck unit testsを実行する。Composeファイルの `CONNECT_CREDENTIALS_FILE` は承認handoff後に設定し、その時だけ `docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yaml config` で構文確認する。
+- Helmを使うsiteはhelm lint、helm template、chart/schema version確認。
 - manifest内に秘密値、public bind、未許可port、APPv3 target、cross-site shared volumeがないことを静的check。
 - secret fileはdummy/path placeholderを使用し、実credentialをfixtureやsampleにしない。
 - local test結果にはrepository path、commit SHA、実行コマンド、exit codeのみを残す。正式remote/local repo接続不能なら「未実施」と明記する。

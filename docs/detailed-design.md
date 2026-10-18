@@ -12,6 +12,12 @@
 
 MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribution名、自動起動、コンテナ実行方式は未確認。APPv4/MainUbutsu2を含め、volume driver、host名/IP、TLS終端も確定していないため固定しない。Docker Compose/Kubernetesのmanifestは各環境の棚卸し後に選ぶ。
 
+## 1.1 Docker Compose候補
+
+`deploy/docker/compose.yaml` はAPPv4/MainUbutsu2/MiniPC-Oyamaのいずれか一拠点に使う共通候補であり、実hostには未適用。公式 `1password/connect-api:1.8.3` と `1password/connect-sync:1.8.3` を同一networkで動かし、両方がCompose project-scoped `connect-data` named volumeを共有する。credential fileは必須の外部file path参照をread-only secret mountし、secret値やAPI tokenはファイルに含めない。APIのみ `127.0.0.1:8080` に公開し、sync/bus portはinternal networkだけにする。API/Sync busは公式manual configurationでservice peerを指定する。
+
+公式Connect API image内にroot health commandがあると仮定しない。`connect-healthcheck` は別のPython containerでAPI `GET /health` を読み、`sync` と `sqlite` が`ACTIVE`の時だけhealthyにする。probeはUID 65532で動かし、read-only filesystem、全capabilities drop、no-new-privilegesを設定する。これはAPI/Syncコンテナ個別のDocker health stateではなくaggregate observer serviceである。実際のCompose/host互換性、localhost route、secret file読取permissionは各siteのruntime確認後に静的/実動作検証する。
+
 ## 2. 認証とVault境界
 
 - 1Password account側に既存Connect登録 CredentialMCPが1つある前提とする。Connect serverを作り直したり、tokenを追加発行しない。

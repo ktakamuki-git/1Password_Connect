@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+COMPOSE_PATH = ROOT / "deploy" / "docker" / "compose.yaml"
+
+
+class ComposeContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+        cls.services = cls.compose["services"]
+
+    def test_official_connect_images_use_same_pinned_release(self) -> None:
+        api = self.services["connect-api"]["image"]
+        sync = self.services["connect-sync"]["image"]
+        self.assertEqual(api, "1password/connect-api:1.8.3")
+        self.assertEqual(sync, "1password/connect-sync:1.8.3")
+        self.assertNotIn("latest", api)
+        self.assertEqual(api.rsplit(":", 1)[1], sync.rsplit(":", 1)[1])
+
+    def test_only_api_is_bound_to_host_loopback(self) -> None:
+        self.assertEqual(self.services["connect-api"]["ports"], ["127.0.0.1:8080:8080"])
+        self.assertNotIn("ports", self.services["connect-sync"])
+        self.assertNotIn("ports", self.services["connect-healthcheck"])
+
+    def test_api_and_sync_share_one_project_local_data_volume(self) -> None:
+        expected = "connect-data:/home/opuser/.op/data"
+        self.assertIn(expected, self.services["connect-api"]["volumes"])
+        self.assertIn(expected, self.services["connect-sync"]["volumes"])
+        self.assertNotIn("external", self.compose["volumes"]["connect-data"])
+
+    def test_credentials_are_required_external_read_only_secret_references(self) -> None:
+        secret_file = self.compose["secrets"]["connect_credentials"]["file"]
+        self.assertIn("${CONNECT_CREDENTIALS_FILE:?", secret_file)
+        for name in ("connect-api", "connect-sync"):
+            service = self.services[name]
+            self.assertIn("connect_credentials", service["secrets"])
+            self.assertEqual(
+                service["environment"]["OP_SESSION"],
+                "/run/secrets/connect_credentials",
+            )
+            self.assertNotIn("OP_CONNECT_TOKEN", service["environment"])
+        env_example = (ROOT / "deploy" / "docker" / ".env.example").read_text()
+        self.assertIn("CONNECT_CREDENTIALS_FILE=/absolute/path/to/", env_example)
+        self.assertNotIn("eyJ", env_example)
+
+    def test_manual_bus_peers_stay_on_compose_network(self) -> None:
+        api = self.services["connect-api"]["environment"]
+        sync = self.services["connect-sync"]["environment"]
+        self.assertEqual(api["OP_BUS_PORT"], "11223")
+        self.assertEqual(api["OP_BUS_PEERS"], "connect-sync:11223")
+        self.assertEqual(sync["OP_BUS_PORT"], "11223")
+        self.assertEqual(sync["OP_BUS_PEERS"], "connect-api:11223")
+
+    def test_health_probe_is_non_root_and_restricted(self) -> None:
+        probe = self.services["connect-healthcheck"]
+        self.assertEqual(probe["user"], "65532:65532")
+        self.assertTrue(probe["read_only"])
+        self.assertIn("ALL", probe["cap_drop"])
+        self.assertIn("no-new-privileges:true", probe["security_opt"])
+        self.assertEqual(
+            probe["healthcheck"]["test"],
+            ["CMD", "python", "/opt/connect_healthcheck.py"],
+        )
+        self.assertEqual(probe["image"], "python:3.14.8-alpine3.24")
+
+    def test_credentials_and_environment_files_are_ignored(self) -> None:
+        ignore_rules = (ROOT / ".gitignore").read_text()
+        self.assertIn(".env", ignore_rules.splitlines())
+        self.assertIn("!.env.example", ignore_rules.splitlines())
+        self.assertIn("1password-credentials.json", ignore_rules.splitlines())
+
+
+if __name__ == "__main__":
+    unittest.main()
