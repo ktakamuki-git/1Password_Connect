@@ -39,8 +39,8 @@ host-independent profileとCompose候補のST-01〜ST-06/09/10〜14はhost inven
 | ID | 確認 | 方法/期待結果 |
 |---|---|---|
 | DP-01 | process/container status | APIとSyncが起動。予期せぬrestart loopなし |
-| DP-02 | API health | internal endpoint /health が成功 |
-| DP-03 | Sync health | 選定manifestで明示したOP_HTTP_PORTの /health が成功。汎用container defaultは8080、公式Helm chartのSync port defaultは8081。containerから外へ公開しない |
+| DP-02 | API health | internal endpoint /health が成功し、response dependenciesのsync/sqliteがACTIVE |
+| DP-03 | Sync health | Compose候補ではrootless observer serviceがhealthy。別runtimeの場合は、実装されたhealth方式でSync readinessを確認し、portをhost外へ公開しない |
 | DP-04 | Auth | local APIへ既存Bearer tokenでGET /v1/vaults。2xx。token文字列は画面/ログに表示しない |
 | DP-05 | Vault identity | レスポンスのVault ID/nameだけを許可済み値と比較。item contentsは取らない |
 | DP-06 | App routing | site-localアプリのhost設定がsite-local API endpointを指す |

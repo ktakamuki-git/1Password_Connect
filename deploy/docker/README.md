@@ -36,4 +36,12 @@ After separate host/runtime and credential-file handoff checks, Compose syntax c
 docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yaml config
 ```
 
-Tests require Python 3.10 or later. Do not report the saved tests as passing until that test command is actually run. Do not run any GitLab pipeline or runner.\n\n## Official references\n\n- [1Password Docker Compose example](https://github.com/1Password/connect/blob/main/examples/docker/compose/docker-compose.yaml)\n- [Connect server configuration and shared data volume](https://www.1password.dev/connect/server-configuration)\n- [Connect API health response](https://www.1password.dev/connect/api-reference/get-server-health)\n- [Official Connect API image tags](https://hub.docker.com/r/1password/connect-api/tags)\n- [Official Connect Sync image tags](https://hub.docker.com/r/1password/connect-sync/tags)
+Tests require Python 3.10 or later. Do not report the saved tests as passing until that test command is actually run. Do not run any GitLab pipeline or runner.
+
+## Official references
+
+- [1Password Docker Compose example](https://github.com/1Password/connect/blob/main/examples/docker/compose/docker-compose.yaml)
+- [Connect server configuration and shared data volume](https://www.1password.dev/connect/server-configuration)
+- [Connect API health response](https://www.1password.dev/connect/api-reference/get-server-health)
+- [Official Connect API image tags](https://hub.docker.com/r/1password/connect-api/tags)
+- [Official Connect Sync image tags](https://hub.docker.com/r/1password/connect-sync/tags)
