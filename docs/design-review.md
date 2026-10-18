@@ -8,27 +8,24 @@
 
 | 段階 | 現行成果SHA | レビュー結果 |
 |---|---|---|
-| 要件定義 | docs/requirements.md — de6c791d59964fae7030b70853284c2b52261ed1 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
-| 概要設計 | docs/overview-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
-| 詳細設計 | docs/detailed-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | 同一workflow再利用とsite別secret handoff/API認証を分離。初回起動をprocess/heartbeat→認証GET→初回sync readiness→Vault ID→app切替に整列。 |
-| 実装計画 | docs/implementation-plan.md — a0dfd82e7c07abd4a60a9fe8c34c1883c552d5c8 | Docker Compose候補と任意health observerを記録。初回sync readiness後のsiteごとのapp切替を別gateにする。 |
-| テスト設計 | docs/test-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | JSON Schema、Compose contract/unit test、site別runtime試験を区別。Compose healthはAPI /health dependency statusをrootless sidecarで確認する。 |
+| 要件定義 | docs/requirements.md — 13a88a820bedc4615a5e96a1d29dc687804340d6 | CredentialMCP identity 1つ/3 runtime pairs、MCP tools/call adapter要件、site専用Runner 3台を追加。現statusは未準備と区別。 |
+| 概要設計 | docs/overview-design.md — 34b2fc5d3a990add4db7dcf7ca972a5a0483857f | Connect REST data planeとPP2→plugin MCP call境界を分離し、runner/tag/accessの現在値と目標を明記。 |
+| 詳細設計 | docs/detailed-design.md — ecdb774be1c639bd1431eeae4dbf4ee93435d765 | MCP tools/list/call、schema allow-list、error/result安全取扱いを定義。Community 2-cluster例とHelm replica根拠を分け、site runner preconditionを追加。 |
+| 実装計画 | docs/implementation-plan.md — a3bbef93798ad4bd65a990952cac151f9605ab12 | PP2 codebase特定後のadapter実装、mock tests、site-bound manual/protected runner jobsを計画。 |
+| テスト設計 | docs/test-design.md — bf7574db3ccb39c3c90d43ca0ed643561d2d01e3 | MCP mock contract/unitとsite runner routing/deployment gate試験を追加。live calls、pipeline実行は未実施。 |
 
-これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も含む。  
+これらは今回の追加要件を含むstage文書のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も維持している。今回の5段階変更は親の新しい独立レビュー待ちであり、過去の `de6c791d` に対する承認は今回の追加要件や次の実装には継承しない。  
 共通template: profile `templates/connect-site-profile.example.json` — 17bd350a5b238eaaf61a4bd19ebab8fe3aefba49; schema — 5c6eac3d19c4254ffb2c6a3cf343b788a5139ef5; usage README — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3.
 Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optional `monitoring` profile in `deploy/docker/compose.yaml`; ordered startup/runbook in `deploy/docker/README.md`; revised test design and implementation plan; updated Compose contract and health unit tests. The health test source now covers ACTIVE, initial TOKEN_NEEDED pending, non-200, connection failure, malformed JSON, and missing dependency cases. Tests remain unexecuted; e9ff is a GitLab source commit, not a test result.
 
-## 2. 独立レビュー指摘と修正
+## 2. 今回の追加要件とレビュー観点
 
-1. **同一registrationの複数cluster利用** — 1Password公式コミュニティのstaff回答は同一Secrets Automation workflowを複数のKubernetes Operator/deploymentで利用可能と明示する。公式Helm chartのreplica定義とも照合し、CredentialMCP登録1つ/既存tokenを3拠点で使う。別登録/tokenは作らない。[Official staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm chart](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
-2. **概要図の向き** — アプリからConnect APIへ要求し、API/Syncが拠点内cacheを共有し、SyncがCloudと同期する向きに直した。
-3. **Sync health port** — 公式Connect containerのOP_HTTP_PORT defaultは8080。公式Helm chartではSyncのhealth portを8081に設定する。テストはgeneric defaultを決め打ちせず、選定manifestで設定したportに合わせる。[Connect configuration](https://www.1password.dev/connect/server-configuration) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
-4. **host inventoryとtemplate作成の分離** — secret-free、host-independent templateは各hostに接続できる前でも作成/静的検証できる。IP、runtime、volume path、resource limitなどsite-specific設定とcredential配置、実配備だけを各hostの確認後に行う。
-5. **ローカル環境** — MainUbutsu2 Project接続はMCPHub担当が並行対応中。ここでは既報のWSL拒否を迂回しておらず、ローカルrepo/testを未実施と区別する。
-6. **MiniPC-Oyama環境** — 最新のユーザー情報でWSL利用を確認した。Windows native前提を除外し、WSL distro/runtime/autostartは未確認として要件・設計・計画・テスト文書を更新した。
-7. **Compose実装** — 独立レビュー後の承認に従い、official API/Sync 1.8.3、localhost-only bind、project-local shared volume、外部file-path secret reference、manual internal bus、UID 65532のhealth observer、ローカルtest sourceを追加した。実hostへの適用は行っていない。
-8. **初回同期の順序** — 独立レビューで `/health` の `TOKEN_NEEDED` を認証GET前のpending状態として扱う必要を確認。公式health例にこの状態があり、公式Kubernetes exampleは認証済み `GET /v1/vaults` が初回syncを開始すると記載。process/heartbeat → 承認済みauth GET → `sync`/`sqlite` ACTIVE待ち → Vault ID確認 → app切替に修正した。observer unhealthy単独ではstartup failureと判断しない。[Health](https://www.1password.dev/connect/api-reference/get-server-health) / [Kubernetes example](https://github.com/1Password/connect/blob/main/examples/kubernetes/README.md) / [Heartbeat](https://www.1password.dev/connect/api-reference/get-heartbeat)
-9. **最小Compose構成** — 観測用containerが本体6つに3つ加わり得ることを明記。`monitoring` profileでobserverをopt-inにし、defaultは各site API+Syncの2つ、3site合計6 Connect containers。本体起動/相互接続はobserverのhealthに依存しない。
+1. **Connect identity/replicas evidence** — 公式Helm deployment templateはreplica countと同一credentials SecretをAPI/Sync containerへ渡す定義を示す。公式1Password Community回答者は自身の試行として2 clusterで同一 `1password-credentials.json` を使用したと報告。community実例と公式Helm構造は別の根拠として記録し、3 site認証は未確認、同一tokenの全API受理は設計仮説とした。新規registration/token作成は含めない。[Community report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Helm template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
+2. **PP2→plugin MCP adapter** — 欠けていたMCP JSON-RPC `tools/list` / `tools/call` 要件を追加。実tool名/transport/server identityを推測せず、allow-list/schema、error/result handling、secret-safe outputを契約化。PP2 repository identityは未確認なのでcodeを別repoへ配置しない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+3. **CI runner plan** — 恒久停止の要求文を除き、3 site専用self-hosted runnerのtag mappingとshared runner禁止を設計した。read-only inventory: `appv4` / `main-ubutsu2` / `oyama-wsl` group runnersはonline/active/non-sharedだがtag list空、project runner list 0件、project group/jobs/builds設定disabled。別担当が設定するまでpipelineは未実行。設定変更はしていない。
+4. **Overview/Connect details retained** — app→local API、API/Sync同site volume、Sync→Cloud方向、Sync health port、API initial `TOKEN_NEEDED` pending sequenceを既存設計から保持。
+5. **Host inventory/local access** — APPv4 VM102等の実環境確認、MainUbutsu2正式remote path、MiniPC-Oyama WSL runtimeは未確認。既報Windows executor WSL拒否の昇格/別資格情報迂回はしていない。
+6. **Secret boundary** — secret values, existing token, credentials JSON, and Vault item values have not been retrieved, logged, or committed. No Connect registration/auth/deployment actions occurred.
 
 ## 3. 設計全体の検査
 
@@ -37,15 +34,15 @@ Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optiona
 - token/credentialsの値を取得・表示・Git保存しない。
 - 既存画面のAutomation/ChromeVault read-only表示はConnect API認証成功の証拠と扱わない。
 - APIを未認証でInternetへ公開しない。site-specific network/TLS/port設定は実環境確認後。
-- GitLab CI/jobs/builds/shared/group runners/Auto DevOpsはdisabled。こちらからpipeline/runnerを起動していない。停止後pipeline list取得は403で、履歴一覧は未確認。
+- Intended CI uses only three site-bound self-hosted runners and no shared runner. Current project settings disable jobs/builds/group runners; three non-shared group runners are online but untagged and unavailable to this project. No pipeline/runner was started; access/tag configuration is assigned to a separate owner.
 - test専用1Password project/server/vaultは作らない。実Vaultへのwrite/delete試験も行わない。
 
 ## 4. 実施状態と次のgate
 
-de6c791dの設計全体は親の独立レビューで残指摘なし・実装開始可と確認された。以降の修正で3site workflow再利用とsite別secret handoff/API認証を分け、初回起動の順序とoptional observer profileを明記した。
+以前の `de6c791d` baselineは親レビューで残指摘なしと確認され、そのbaseline向け実装は許可された。今回のPP2 adapter、self-hosted runner mapping、credentials evidence修正は新しい差分であり、stage別/全体の親独立レビューを待つ。次実装への許可は今回の新レビュー後に判断する。
 
 その承認後にruntime-neutral profile/Schema、Docker Compose候補、health probe、unit/contract test sourceをGitLab branchへ保存した。今回の初回同期レビューに合わせ、順序をprocess/heartbeat → 承認済み初回auth GET → API `/health` のsync/sqlite ACTIVE待ち → Vault ID確認 → app cutoverに修正した。observerは `monitoring` profileで任意起動し、初回 `TOKEN_NEEDED` 中のunhealthyだけで失敗判定しない。test codeはJSON Schema validation、Compose contract、API `/health` のACTIVE/TOKEN_NEEDED/non-200/communication failure/malformed JSON/missing dependency casesを対象にする。テストコードは保存済みだが、`python -m unittest` と `docker compose config` は未実行であり、PASSとは報告していない。
 
 Compose候補はofficial API/Sync 1.8.3、API loopback bind、same-site named volume、secret path reference、rootless aggregate health observerを持つ。実hostのDocker Compose runtime/port/secret file permissionは確認前なので、実適用・起動はしていない。credential/token配置はsiteごとの別safe handoff承認後に限る。MiniPC-OyamaはWSL前提だがdistro/runtime/autostart/localhost route未確認。
 
-ローカルclone/test、1Password credential配置、API認証、deployment、3site実動作試験は未実施。
+PP2 adapter source、`.gitlab-ci.yml`/site deploy jobs、local clone/test、MCP live call、credential placement, API authentication, deployment, and three-site runtime checks are not executed in this change. Test source and Compose candidate from prior commits remain unexecuted. Group/runner/project setting change is not performed here. MR !1 remains draft. Its description is synchronized with this updated review summary.
