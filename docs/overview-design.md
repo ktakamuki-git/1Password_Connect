@@ -3,13 +3,20 @@
 ## 1. アーキテクチャ
 
 ```text
-                       1Password Cloud / 同じ許可Vault
-                         ^             ^             ^
-                         | Sync        | Sync        | Sync
-                         |             |             |
-APPv4:      [Connect API] <-> [local encrypted volume] <-> [Connect Sync] -> APPv4 app
-MainUbutsu2:[Connect API] <-> [local encrypted volume] <-> [Connect Sync] -> local app
-MiniPC:     [Connect API] <-> [local encrypted volume] <-> [Connect Sync] -> local app
+                         1Password Cloud / 同じ許可Vault
+                           ▲ sync        ▲ sync        ▲ sync
+                           │              │              │
+APPv4 app ──API request──> [APPv4 Connect API] ───────┐
+                                                       ├── [APPv4 local encrypted cache]
+1Password Cloud <──sync─── [APPv4 Connect Sync] ──────┘
+
+MainUbutsu2 app ──API request──> [MainUbutsu2 Connect API] ─┐
+                                                            ├── [MainUbutsu2 local encrypted cache]
+1Password Cloud <────sync─────── [MainUbutsu2 Connect Sync] ─┘
+
+MiniPC-Oyama app ─API request──> [MiniPC Connect API] ──────┐
+                                                            ├── [MiniPC local encrypted cache]
+1Password Cloud <────sync─────── [MiniPC Connect Sync] ─────┘
 
 One logical Connect registration: CredentialMCP
 One existing registered token and credentials identity; runtime copies at 3 sites
@@ -40,7 +47,7 @@ No cache volume shared between sites
 - **公開範囲:** Connect APIを認証なしでInternet公開しない。外向きSync通信も実環境のFW/proxy条件を調査して許可する。
 - **アプリ接続:** 同一ホストならloopback bindingを第一候補とする。別ホストからならサイト内のprivate networkで接続元を限定する。実際のIP、DNS、container networkは未確認のため、固定値・公開portは決めない。
 - **TLS:** 公式設定上、既定はtrusted network内利用。trusted boundary外を通るAPI接続にはTLSを設定する。証明書の発行方法と名前は実ネットワーク確認後に選ぶ。
-- **内部通信:** APIとSyncは同一拠点内でだけ連携させる。Syncのhealth port (chart default 8081) はアプリには公開しない。API HTTP defaultは8080、TLS利用時のHTTPS defaultは8443。[Connect configuration](https://www.1password.dev/connect/server-configuration)
+- **内部通信:** APIとSyncは同一拠点内でだけ連携させる。Sync health portは選択したdeployment設定に従う（汎用コンテナのOP_HTTP_PORT defaultは8080、公式Helm chartはSyncのHTTP portを8081に設定）。アプリには公開しない。API HTTP defaultは8080、TLS利用時のHTTPS defaultは8443。[Connect configuration](https://www.1password.dev/connect/server-configuration)
 
 ## 4. 技術選定の決め方
 
@@ -50,14 +57,14 @@ image tagは実装時に公式の対応版を調べて明示的に固定する�
 
 ## 5. 公式仕様と未確定事項
 
-公式Connect concepts/get-startedは登録時のcredential file、server access token、Connect API/Sync pairを定義する。公式Helm chartは同じConnect deploymentのreplica数を持ち、各replica pairへcredential Secretと共有データvolumeを渡す。これにより一つのlogical serverのreplicaを構成する案は支えられる。一方、別host/clusterに分かれた3つの独立deploymentが同一tokenを同時に使う構成について明示した公式説明は確認できていない。
+1Passwordの公式コミュニティスタッフ回答は、同一Secrets Automation workflowを複数のKubernetes Operator/deploymentで使用できることを確認している。公式Helm chartもConnect deploymentのreplicaを設定し、credential Secretと共有data volumeを各replicaへ渡す。したがってCredentialMCP登録1つ・既存tokenを3拠点の同一logical server runtimeとして使い、別登録/追加tokenは作らない。[Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
 
-したがって設計上は「登録1つの同一logical Connect serverを3か所で複製実行」を要求し、3拠点のcredential/token配布前に親レビューと公式根拠確認を通す。別々のConnect登録を作る必要があれば停止する。既存tokenの値は見ず、本人の安全な操作で各APIへの認証を確認する。
+仕様根拠はsecretを各hostへ置く承認を代替しない。CredentialMCPのcredential/tokenを各siteへ配置する前にユーザー/親の安全なhandoff承認を得る。配備後はAPI認証を各拠点で個別に検証する。
 
 ## 6. 概要レビュー
 
 ゼロベースレビューで、以下を反映した。
 - 「拠点間volume共有なし」がAPI/Sync間の必要なvolumeまで否定する読み違いを解消し、ローカル3 volumeにした。
 - 登録1件、runtime pair 3件、コンテナ6個を分けて記載した。
-- 1つのtokenが3つの独立環境で有効という根拠の強さを過大評価しないよう、未確認事項とcredential配布gateを追加した。
+- workflow再利用の公式根拠を追加し、credentialのsite別配置承認とAPI認証試験を別gateとして整理した.
 - ネットワークやcontainer engine未確認のため、host/IP/port mappingは設計で決めず実調査へ送った。
