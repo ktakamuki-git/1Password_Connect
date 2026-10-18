@@ -23,10 +23,11 @@
 ## Phase 2.1 — PP2から1Password plugin MCPを呼ぶadapter
 
 1. PP2の既存1Password plugin MCP接続を特定し、MCP `tools/list`で実在tool名と `inputSchema` を取得する。未確認のendpoint/transport/tool nameを推測しない。
-2. PP2側の小さなadapterがallow-list済みread-only toolをMCP JSON-RPC 2.0 `tools/call` で呼ぶ契約を定義する。未知tool/write tool拒否、入力schema検証、correlation ID、content/structuredContent処理、protocol errorと `isError` の分類、timeoutを実装する。
-3. secret/item contentsとcall arguments/resultsをlogに残さず、人の確認を伴うread operationにする。Direct Connect REST fallbackや新credential設定は実装しない。
-4. JSON-RPC mock contract/unit testsを作成する。live plugin callは既存接続/authが読み取り確認され、対象operationが親と合意されるまで実行しない。
-5. PP2本体repo/pathがこのproject treeにないため、PP2 adapter sourceはPP2 repository identityを確認してからその既存repoに実装する。1Password_Connect repoに別アプリを誤配置しない。
+2. 各site用plugin MCP接続のbackend route/bindingを追跡し、対象site-local Connect APIに結び付くことを確認する。中央/他siteのConnectや未確認経路へsilent bypassしない。site-local経路を確認できなければ準拠とは扱わず、親へ未確認/例外として報告する。
+3. PP2側の小さなadapterがallow-list済みread-only toolをMCP JSON-RPC 2.0 `tools/call` で呼ぶ契約を定義する。未知tool/write tool拒否、入力schema検証、correlation ID、content/structuredContent処理、protocol errorと `isError` の分類、timeoutを実装する。
+4. secret/item contentsとcall arguments/resultsをlogに残さず、人の確認を伴うread operationにする。Direct Connect REST fallbackや新credential設定は実装しない。
+5. JSON-RPC mock contract/unit testsを作成し、site route selectionが中央/他siteへ向かないことを検証する。live plugin callは既存接続/authの状態と対象operationを確認してから扱う。
+6. PP2本体repo/pathがこのproject treeにないため、PP2 adapter sourceはPP2 repository identityを確認してからその既存repoに実装する。1Password_Connect repoに別アプリを誤配置しない。
 
 ## Phase 3 — common profile and Docker Compose candidate
 
@@ -75,4 +76,4 @@ CI pipelineは3 site別のtest/deploy jobへ分け、各jobの `tags` をそれ�
 
 ## 実装計画レビュー
 
-ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2 adapter契約、3 site専用self-hosted runner、現snapshot未準備状態を計画へ反映。設計段階の独立レビュー後にhost-independent template、Compose candidate、test source、PP2 adapter implementationを対象PP2 repoへ追加する。per-host設定/配備/CI実行はhost/runtime、runner mapping、safe secret distribution、およびAPI readinessの確認後に行う。
+ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2 adapter契約とsite-local Connect route確認、3 site専用self-hosted runner、現snapshot未準備状態を計画へ反映。設計段階の独立レビュー後にhost-independent template、Compose candidate、test source、PP2 adapter implementationを対象PP2 repoへ追加する。per-host設定/配備/CI実行はhost/runtime、runner mapping、safe secret distribution、およびAPI readinessの確認後に行う。
