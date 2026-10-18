@@ -49,7 +49,7 @@ HubはpluginへMCP `tools/list` を送り、返されたtool metadata/schemaを�
 4. Hub/Chatには許可範囲の公開metadataだけを返す。監査ログにはcorrelation id、tool名、status、所要時間などを記録し、arguments、raw result、item values、Bearer token、credential fileを出さない。既存Hub認証/OS permissionsの範囲で処理し、新たな人手確認を追加しない。
 5. pluginからConnect RESTへの接続失敗をmetadataで報告し、Hubがpluginを迂回してREST APIを直接呼ぶfallbackは行わない。credentialの再発行や設定変更を自動化しない。
 
-MCP protocolのtool discovery/callとtool result/errorの形式を使用する。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)。PP2本体の対象repositoryと接続実装が未確認のため、この節は実装contractとmock-test要求であり、実接続の証明ではない。
+MCP protocolのtool discovery/callとtool result/errorの形式を使用する。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)。PP2本体はProject ID `87779895` (`ktakamuki_wsl/pc-platform/pc_platform2`) と確認済みである。Hubからこのrepositoryのplugin分離moduleをlocalstdio downstreamとして起動する接続実装は未確認のため、この節は実装contractとmock-test要求であり、実接続の証明ではない。
 ## 3. コンテナ設定項目
 
 | 要素 | 方針 |
