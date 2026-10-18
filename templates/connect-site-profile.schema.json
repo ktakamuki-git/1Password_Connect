@@ -178,6 +178,9 @@
           ]
         }
       }
+    },
+    "$schema": {
+      "const": "./connect-site-profile.schema.json"
     }
   }
 }
