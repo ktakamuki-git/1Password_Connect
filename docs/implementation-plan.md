@@ -50,7 +50,7 @@
 
 実環境と安全なcredential handoffの承認後、一siteずつ進める。最初はAPPv4を候補にするがVM102を正式確認してからにする。次にMainUbutsu2、最後にMiniPC-Oyamaを個別配備する。
 
-各siteで以下を別個に記録する: API health、Sync health、既存tokenの認証成否、Vault識別子一致、読み取りスコープ、アプリからlocal APIへの経路、APIにpublic経路がないこと、image SHA/tag。testにVault write/deleteを含めない。
+各siteで以下を別個に記録する: API health、Compose候補ではaggregate observerとSync dependency status (他runtimeは選定済みhealth方式)、既存tokenの認証成否、Vault識別子一致、読み取りスコープ、アプリからlocal APIへの経路、APIにpublic経路がないこと、image SHA/tag。testにVault write/deleteを含めない。
 
 三siteの実動作が全部成功するまで「完了」と報告しない。認証失敗、Sync停滞、version差、host identity不一致、public exposureの疑いがある場合はそのsiteを閉じて親に報告する。
 
