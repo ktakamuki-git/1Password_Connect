@@ -12,7 +12,7 @@
 | 概要設計 | docs/overview-design.md — 40ea97e07d5effb8742dac08ea8e810a687d55dc | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
 | 詳細設計 | docs/detailed-design.md — ef572afdeab8a6c4d1ab370b9252f4254618da73 | 同一workflow再利用を公式staff回答で明記。汎用OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081を区別。secret placementと実動作試験は残す。 |
 | 実装計画 | docs/implementation-plan.md — 9484c83419b050b3aebcd2014813f260a73bda5c | design sign-off後のhost-independent/secret-free template実装と、host-specific設定/配備の確認を分離。実機未接続をtemplate作成の阻害条件にしない。 |
-| テスト設計 | docs/test-design.md — b2b18c03fc7e1b87eb2534909a5e26c316befbb8 | host-independent templateの静的試験とsite別runtime試験を分離。Sync healthは実設定portで確認し、8081を汎用defaultとしない。 |
+| テスト設計 | docs/test-design.md — 74faf614bae8b172a859528a130bfa43b5173954 | host-independent templateの静的試験とsite別runtime試験を分離。Sync healthは実設定portで確認し、8081を汎用defaultとしない。 |
 
 これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。
 
