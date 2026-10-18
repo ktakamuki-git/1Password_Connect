@@ -8,89 +8,76 @@ workflow:
 stages:
   - verify
 
-.plugin-test:
+.static-mock-site:
   stage: verify
   script:
     - |
-      set +e
-      overall_status=0
-      node_bin="$(command -v node || command -v nodejs)"
-      if [ -z "$node_bin" ]; then
-        echo "Node.js is unavailable on this shell runner."
-        overall_status=1
-      else
-        "$node_bin" --version || overall_status=1
-        if ! command -v npm >/dev/null 2>&1; then
-          echo "npm is unavailable on this shell runner."
-          overall_status=1
-        else
-          npm --version || overall_status=1
-          (
-            cd plugins/onepassword-connect &&
-            npm ci --offline --no-audit --no-fund &&
-            npm run check &&
-            npm test
-          ) || overall_status=1
-        fi
-      fi
-      exit "$overall_status"
+      set -euo pipefail
+      project_root="${CI_PROJECT_DIR:?CI_PROJECT_DIR is required}"
+      cd "$project_root"
+      tool_dir="$(mktemp -d "$project_root/.ci-tools.XXXXXX")"
+      credential_placeholder="$tool_dir/empty-connect-credentials.json"
+      node_modules_dir="$project_root/plugins/onepassword-connect/node_modules"
+      trap 'rm -rf "$tool_dir" "$node_modules_dir"' EXIT
+      : > "$credential_placeholder"
 
-plugin-appv4:
-  extends: .plugin-test
+      for required_command in curl sha256sum tar xz python3; do
+        if ! command -v "$required_command" >/dev/null 2>&1; then
+          echo "Required host utility is unavailable: $required_command"
+          exit 1
+        fi
+      done
+      test "$(uname -m)" = "x86_64" || { echo "Expected x86_64 Linux runner."; exit 1; }
+
+      node_url="https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.xz"
+      echo "Downloading official Node.js archive: $node_url"
+      curl --fail --location --show-error --output "$tool_dir/node.tar.xz" "$node_url"
+      printf '%s  %s\n' "cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008" "$tool_dir/node.tar.xz" | sha256sum --check -
+      mkdir "$tool_dir/node"
+      tar -xJf "$tool_dir/node.tar.xz" -C "$tool_dir/node" --strip-components=1
+      export PATH="$tool_dir/node/bin:$PATH"
+      test "$(node --version)" = "v24.22.0"
+      node --version
+      npm --version
+
+      npm_config_registry="https://registry.npmjs.org/" npm_config_cache="$tool_dir/npm-cache" npm ci --no-audit --no-fund --cache "$tool_dir/npm-cache" --prefix "$project_root/plugins/onepassword-connect" --ignore-scripts=false
+      (cd plugins/onepassword-connect && npm run check && npm test)
+
+      pip_wheel_url="https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl"
+      echo "Downloading pinned pip wheel: $pip_wheel_url"
+      curl --fail --location --show-error --output "$tool_dir/pip-26.2.1-py3-none-any.whl" "$pip_wheel_url"
+      printf '%s  %s\n' "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e" "$tool_dir/pip-26.2.1-py3-none-any.whl" | sha256sum --check -
+      export PYTHONPATH="$tool_dir/python:$tool_dir/pip-26.2.1-py3-none-any.whl"
+      export PIP_CONFIG_FILE=/dev/null
+      export PIP_INDEX_URL="https://pypi.org/simple"
+      export PIP_CACHE_DIR="$tool_dir/pip-cache"
+      python3 -m pip --version
+      python3 -m pip install --disable-pip-version-check --no-input --no-user --no-compile --only-binary=:all: --target "$tool_dir/python" -r tests/requirements.txt
+      python3 -m unittest discover -s tests -v
+
+      compose_release_url="https://github.com/docker/compose/releases/download/v5.6.0"
+      checksums_url="$compose_release_url/checksums.txt"
+      echo "Downloading official Docker Compose checksum list: $checksums_url"
+      curl --fail --location --show-error --output "$tool_dir/compose-checksums.txt" "$checksums_url"
+      printf '%s  %s\n' "40d09e5c4e2f2e24f99c0520cbd29c02d816b58800b4e11070318cffe03c6fbd" "$tool_dir/compose-checksums.txt" | sha256sum --check -
+      compose_url="$compose_release_url/docker-compose-linux-x86_64"
+      echo "Downloading official Docker Compose standalone: $compose_url"
+      curl --fail --location --show-error --output "$tool_dir/docker-compose" "$compose_url"
+      compose_sha="$(awk '$2 == "docker-compose-linux-x86_64" { print $1; exit }' "$tool_dir/compose-checksums.txt")"
+      test "${#compose_sha}" -eq 64 || { echo "Docker Compose checksum entry is missing."; exit 1; }
+      printf '%s  %s\n' "$compose_sha" "$tool_dir/docker-compose" | sha256sum --check -
+      chmod +x "$tool_dir/docker-compose"
+      "$tool_dir/docker-compose" --version
+      CONNECT_CREDENTIALS_FILE="$credential_placeholder" "$tool_dir/docker-compose" -f deploy/docker/compose.yaml config >/dev/null
+
+site-appv4:
+  extends: .static-mock-site
   tags: [appv4]
 
-plugin-ubutsu2:
-  extends: .plugin-test
+site-ubutsu2:
+  extends: .static-mock-site
   tags: [ubutsu2]
 
-plugin-oyama:
-  extends: .plugin-test
-  tags: [oyama-wsl]
-
-.python-compose-test:
-  stage: verify
-  script:
-    - |
-      set +e
-      overall_status=0
-      python3 --version || overall_status=1
-      python3 -m pip --version || overall_status=1
-      python3 -m pip cache list
-      temp_dir="$(mktemp -d)" || exit 1
-      credential_placeholder="$(mktemp)" || { rm -rf "$temp_dir"; exit 1; }
-      trap 'rm -rf "$temp_dir" "$credential_placeholder"' EXIT
-
-      python3 -m pip install --disable-pip-version-check --no-index --target "$temp_dir/python" -r tests/requirements.txt
-      python_status=$?
-      if [ "$python_status" -eq 0 ]; then
-        PYTHONPATH="$temp_dir/python${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest discover -s tests -v || overall_status=1
-      else
-        echo "Required Python packages are not available from the local pip cache; no network access was attempted."
-        overall_status=1
-      fi
-
-      if command -v docker >/dev/null 2>&1; then
-        docker compose version
-        compose_version_status=$?
-        if [ "$compose_version_status" -eq 0 ]; then
-          CONNECT_CREDENTIALS_FILE="$credential_placeholder" docker compose -f deploy/docker/compose.yaml config >/dev/null || overall_status=1
-        else
-          overall_status=1
-        fi
-      else
-        echo "Docker is unavailable on this shell runner."
-        overall_status=1
-      fi
-      exit "$overall_status"
-
-python-compose-appv4:
-  extends: .python-compose-test
-  tags: [appv4]
-
-python-compose-ubutsu2:
-  extends: .python-compose-test
-  tags: [ubutsu2]
-
-python-compose-oyama:
-  extends: .python-compose-test
+site-oyama-wsl:
+  extends: .static-mock-site
   tags: [oyama-wsl]
