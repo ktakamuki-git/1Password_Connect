@@ -10,13 +10,13 @@
 |---|---|---|
 | 要件定義 | docs/requirements.md — de6c791d59964fae7030b70853284c2b52261ed1 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
 | 概要設計 | docs/overview-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
-| 詳細設計 | docs/detailed-design.md — 866a23f1e651dd044b46f1f899398b447c1c3d47 | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
-| 実装計画 | docs/implementation-plan.md — e80f3f504c6b1f3fb252342084ca9cf385fcb0fe | Docker Compose候補とrootless health observerを実装し、test sourceを追加。host-specific適用とcredential配置は別gate。 |
-| テスト設計 | docs/test-design.md — f6fcbed366718064ba332e01a11dfa49c3f79463 | JSON Schema、Compose contract/unit test、site別runtime試験を区別。Compose healthはAPI /health dependency statusをrootless sidecarで確認する。 |
+| 詳細設計 | docs/detailed-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
+| 実装計画 | docs/implementation-plan.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | Docker Compose候補とrootless health observerを実装し、test sourceを追加。host-specific適用とcredential配置は別gate。 |
+| テスト設計 | docs/test-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | JSON Schema、Compose contract/unit test、site別runtime試験を区別。Compose healthはAPI /health dependency statusをrootless sidecarで確認する。 |
 
 これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も含む。  
 共通template: profile `templates/connect-site-profile.example.json` — 17bd350a5b238eaaf61a4bd19ebab8fe3aefba49; schema — 5c6eac3d19c4254ffb2c6a3cf343b788a5139ef5; usage README — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3.
-Compose/test source: `deploy/docker/compose.yaml` + health probe — 866a23f1e651dd044b46f1f899398b447c1c3d47; Compose README — f6fcbed366718064ba332e01a11dfa49c3f79463; Compose contract tests — bfdd75377c73d90b6a3d2422d1b1e3afa3eb9bb5; health unit tests — 866a23f1e651dd044b46f1f899398b447c1c3d47; test dependencies — dcf891ba01bef06b6db625b2134f9caa92e495ec.
+Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optional `monitoring` profile in `deploy/docker/compose.yaml`; ordered startup/runbook in `deploy/docker/README.md`; revised test design and implementation plan; updated Compose contract and health unit tests. The health test source now covers ACTIVE, initial TOKEN_NEEDED pending, non-200, connection failure, malformed JSON, and missing dependency cases. Tests remain unexecuted; e9ff is a GitLab source commit, not a test result.
 
 ## 2. 独立レビュー指摘と修正
 
@@ -27,10 +27,12 @@ Compose/test source: `deploy/docker/compose.yaml` + health probe — 866a23f1e65
 5. **ローカル環境** — MainUbutsu2 Project接続はMCPHub担当が並行対応中。ここでは既報のWSL拒否を迂回しておらず、ローカルrepo/testを未実施と区別する。
 6. **MiniPC-Oyama環境** — 最新のユーザー情報でWSL利用を確認した。Windows native前提を除外し、WSL distro/runtime/autostartは未確認として要件・設計・計画・テスト文書を更新した。
 7. **Compose実装** — 独立レビュー後の承認に従い、official API/Sync 1.8.3、localhost-only bind、project-local shared volume、外部file-path secret reference、manual internal bus、UID 65532のhealth observer、ローカルtest sourceを追加した。実hostへの適用は行っていない。
+8. **初回同期の順序** — 独立レビューで `/health` の `TOKEN_NEEDED` を認証GET前のpending状態として扱う必要を確認。公式health例にこの状態があり、公式Kubernetes exampleは認証済み `GET /v1/vaults` が初回syncを開始すると記載。process/heartbeat → 承認済みauth GET → `sync`/`sqlite` ACTIVE待ち → Vault ID確認 → app切替に修正した。observer unhealthy単独ではstartup failureと判断しない。[Health](https://www.1password.dev/connect/api-reference/get-server-health) / [Kubernetes example](https://github.com/1Password/connect/blob/main/examples/kubernetes/README.md) / [Heartbeat](https://www.1password.dev/connect/api-reference/get-heartbeat)
+9. **最小Compose構成** — 観測用containerが本体6つに3つ加わり得ることを明記。`monitoring` profileでobserverをopt-inにし、defaultは各site API+Syncの2つ、3site合計6 Connect containers。本体起動/相互接続はobserverのhealthに依存しない。
 
 ## 3. 設計全体の検査
 
-- 1Password登録1つ、runtime pair 3組、API 3、Sync 3、合計6 containersを区別。
+- 1Password登録1つ、runtime pair 3組、API 3、Sync 3、合計6 Connect containersを区別。optional `monitoring` profileを3site全てで有効にするとobserverが最大3つ加わる。
 - API/Sync間の拠点内暗号化volumeは必要。3拠点間では共有しない。
 - token/credentialsの値を取得・表示・Git保存しない。
 - 既存画面のAutomation/ChromeVault read-only表示はConnect API認証成功の証拠と扱わない。
@@ -42,7 +44,7 @@ Compose/test source: `deploy/docker/compose.yaml` + health probe — 866a23f1e65
 
 de6c791dの設計全体は親の独立レビューで残指摘なし・実装開始可と確認された。詳細設計の旧停止条件は現行行78で解消済みであり、3siteworkflow再利用とsite別secret handoff/API認証を分けている。
 
-その承認後にruntime-neutral profile/Schema、Docker Compose候補、health probe、unit/contract test sourceをGitLab branchへ保存した。test codeはJSON Schema validation、Compose contract、API `/health` のACTIVE/inactive/missing dependency casesを対象にする。テストコードは保存済みだが、`python -m unittest` と `docker compose config` は未実行であり、PASSとは報告していない。
+その承認後にruntime-neutral profile/Schema、Docker Compose候補、health probe、unit/contract test sourceをGitLab branchへ保存した。今回の初回同期レビューに合わせ、順序をprocess/heartbeat → 承認済み初回auth GET → API `/health` のsync/sqlite ACTIVE待ち → Vault ID確認 → app cutoverに修正した。observerは `monitoring` profileで任意起動し、初回 `TOKEN_NEEDED` 中のunhealthyだけで失敗判定しない。test codeはJSON Schema validation、Compose contract、API `/health` のACTIVE/TOKEN_NEEDED/non-200/communication failure/malformed JSON/missing dependency casesを対象にする。テストコードは保存済みだが、`python -m unittest` と `docker compose config` は未実行であり、PASSとは報告していない。
 
 Compose候補はofficial API/Sync 1.8.3、API loopback bind、same-site named volume、secret path reference、rootless aggregate health observerを持つ。実hostのDocker Compose runtime/port/secret file permissionは確認前なので、実適用・起動はしていない。credential/token配置はsiteごとの別safe handoff承認後に限る。MiniPC-OyamaはWSL前提だがdistro/runtime/autostart/localhost route未確認。
 
