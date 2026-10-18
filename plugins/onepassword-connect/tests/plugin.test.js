@@ -73,6 +73,13 @@ function responseText(result) {
   return (result?.content ?? []).filter((item) => item.type === 'text').map((item) => item.text).join('\n');
 }
 
+async function hubAllowListedCall(client, name, args) {
+  if (name !== TOOL_NAME) {
+    return { isError: true, content: [{ type: 'text', text: JSON.stringify({ status: 'tool_not_allowed' }) }] };
+  }
+  return client.callTool({ name, arguments: args });
+}
+
 test('Hub-equivalent stdio client discovers one read-only tool and receives only vault ID metadata', async () => {
   const api = await startMockApi({
     body: [{
@@ -134,18 +141,14 @@ test('Connect HTTP errors become safe metadata and never expose the response bod
   }
 });
 
-test('Unknown tools and invalid arguments fail without echoing caller input or contacting Connect', async () => {
+test('Hub allow-list rejects unknown tools; plugin rejects invalid arguments without contacting Connect', async () => {
   const api = await startMockApi();
   try {
-    await withHubClient({ origin: api.origin }, async ({ client }) => {
-      let unknownError;
-      try {
-        await client.callTool({ name: 'unknown_secret_tool_name', arguments: {} });
-      } catch (error) {
-        unknownError = error;
-      }
-      assert.ok(unknownError);
-      assert.ok(!String(unknownError.message).includes(SECRET_CANARY));
+    await withHubClient({ origin: api.origin }, async ({ client, notifications, getStderr }) => {
+      const unknownResult = await hubAllowListedCall(client, `unknown_${SECRET_CANARY}`, {});
+      assert.equal(unknownResult.isError, true);
+      assert.equal(JSON.parse(responseText(unknownResult)).status, 'tool_not_allowed');
+      assert.ok(!responseText(unknownResult).includes(SECRET_CANARY));
 
       let invalidArgsResult;
       try {
@@ -155,7 +158,11 @@ test('Unknown tools and invalid arguments fail without echoing caller input or c
       }
       assert.equal(invalidArgsResult.isError, true);
       assert.ok(!String(invalidArgsResult.error?.message ?? responseText(invalidArgsResult)).includes(SECRET_CANARY));
+      assert.equal(invalidArgsResult.structuredContent, undefined);
       assert.equal(api.observations.requests, 0);
+      assert.deepEqual(notifications, []);
+      assert.ok(!getStderr().includes(SECRET_CANARY));
+      assert.ok(!getStderr().includes(TEST_TOKEN));
     });
   } finally {
     await api.close();

@@ -9,7 +9,7 @@ This package is a local stdio MCP server for the PP2 Hub. The Hub starts this pl
 - The Hub must provide these variables through its existing environment allow-list and existing secret handling. This package does not create, retrieve, persist, or distribute credentials.
 - The MCP tool `connect_list_vaults` performs only authenticated `GET /v1/vaults`. It returns site ID, a non-secret route fingerprint, status, and vault IDs. It never returns vault names, item data, credential files, or tokens.
 - The caller cannot select a site or supply a URL. The process uses its single configured endpoint and rejects redirects; it has no cross-site fallback. A user-directed route change is a configuration change and is recorded at startup by site ID and route fingerprint.
-- Success, tool errors, protocol errors, and logs contain only defined metadata. There are no secret-returning tools or custom human-approval/authentication flows. Existing Hub authentication and OS permissions remain the boundary.
+- Plugin success/tool-error results and plugin logs contain only defined metadata. The Hub caller must enforce this package's tool allow-list before sending `tools/call` and project protocol errors to public metadata before exposing them to Chat. There are no secret-returning tools or custom human-approval/authentication flows. Existing Hub authentication and OS permissions remain the boundary.
 - stdout is reserved for MCP protocol messages. Diagnostic events go to stderr and contain no endpoint or credential values.
 
 ## Local verification
