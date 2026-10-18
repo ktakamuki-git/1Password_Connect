@@ -29,26 +29,28 @@
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
 | ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
 | ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
-| ST-15 | PP2 MCP adapter contract | `tools/list` metadataとallow-list/schema、JSON-RPC `tools/call` envelope、protocol error / `isError`, `content`/`structuredContent`を扱い、unknown/write toolを拒否 |
-| ST-16 | MCP secret hygiene | call arguments/result/item content/token/credential fileをlogs/artifacts/auditへ出さない。最低限のcorrelation/status metadataだけを記録する |
-| ST-17 | Site deployment gate | 各site deploy jobがprotected/manualで、site tagに固定され、未設定のrunnerやshared runnerを使わない |
+| ST-15 | Hub-to-plugin MCP contract | Hub相当clientが本repoのlocal stdio pluginへ `tools/list` / `tools/call` を送り、pluginだけがmock Connect RESTへ接続する。PP2 core変更や追加中継層なし |
+| ST-16 | MCP output secret hygiene | success/protocol error/tool error/notificationのHub向け出力とlog/audit/artifactは定義済み公開metadataのみ。raw `content`/`structuredContent`、secret、credential本文、tokenを漏らさず、secret-returning toolなし |
+| ST-17 | CI configuration alignment | job trigger/protectionは既存GitLab設定と本人指示に整合し、新たなmanual/protected必須gateを追加しない。site jobは対応するself-hosted runner tagへ固定し、shared/他site fallbackなし。設定が未準備なら利用不可として記録 |
 
-host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-10〜ST-17はhost inventory前にローカル静的/unit testで検証できる。現状はテストsourceをGitLabへ保存した段階で、実行結果はない。ST-07のsite-specific scope metadataとendpoint/resource/volume、ST-08の実host情報は対象の確認後に検査する。CIは3 self-hosted runner専用に設計する。2026-10-18 snapshotではrunnerはonline/activeだがtagが空でproject accessもないため、ST-09/17の実行は別担当の設定確認後に限る。
+host-independent profile、Compose候補、MCP mock contractのST-01〜ST-08/ST-10〜ST-17はhost inventory前にローカル静的/unit testまたは設定レビューで確認できる。現状はテストsourceをGitLabへ保存した段階で、実行結果はない。ST-07のsite-specific scope metadataとendpoint/resource/volume、ST-08の実host情報は対象確認後に検査する。CI jobは3 self-hosted runnerへsite別割当とする。2026-10-18 snapshotではrunnerはonline/activeでもtagが空でproject accessがないため、ST-09の実行確認は別担当の設定準備後に限る。既存GitLab設定と本人指示の整合はST-17の設定レビューで確認する。
 
-## 2.1 PP2 MCP adapter unit/contract tests
+## 2.1 Hub相当clientから本repo pluginへのMCP unit/contract tests
+
+test harnessはHub相当のMCP clientとして本repository内のplugin moduleをlocal stdio child processで起動し、pluginのConnect API通信先をmock REST serverにする。PP2 coreは変更せず、別のMCP relay/client実装も追加しない。既存Hub外部認証とprocessの既存OS identity/permissionsを維持し、テスト専用の認証・承認・権限昇格を作らない。
 
 | ID | 検査 | 合格条件 |
 |---|---|---|
-| MCP-01 | Tool discovery | `tools/list` JSON-RPC responseをparseし、tool nameと`inputSchema`をallow-listへ照合 |
-| MCP-02 | Call envelope | allow-list済みread toolを `tools/call` JSON-RPC 2.0に載せ、unique correlation idとschema-valid argumentsを送る |
-| MCP-03 | Unknown/disallowed tool | unknown、write、delete toolやschema違反argumentをtransportへ送らず拒否 |
-| MCP-04 | Result/errors | protocol `error`、`result.isError`、success `content`、optional `structuredContent`、timeoutを別状態としてPP2 callerへ返す |
-| MCP-05 | Secret-safe output | call inputs/results/item fields/tokens/credentialsをlog/audit/artifactへ出さない。必要な最小read responseだけをcallerへ返す |
-| MCP-06 | Human approval | secret-bearing read toolはユーザー確認を経てからcallする。denyはserver callなしで終了 |
-| MCP-07 | Site-local Connect binding | site selectorが対応するsite-local Connect backendに結び付き、中央/他site routeへsilent bypassしない。unknown/unverified bindingは拒否またはunverifiedで返す |
+| MCP-01 | Tool discovery | Hub相当clientがpluginへ `tools/list` requestを送り、tool nameと`inputSchema`をallow-listへ照合 |
+| MCP-02 | Call envelope | allow-list済みread toolを `tools/call` JSON-RPC 2.0でpluginへ送り、unique correlation idとschema-valid argumentsを使う |
+| MCP-03 | Unknown/disallowed tool | unknown、write、delete toolやschema違反argumentをREST mockへ送る前に拒否 |
+| MCP-04 | Success/errors/notifications | success、JSON-RPC protocol `error`、tool `result.isError`、notificationを個別に処理し、Hub向けの出力は定義済み公開metadataだけ。raw resultを転送しない |
+| MCP-05 | Secret-safe output/logging | mockの禁止フィールドに置いた非secret sentinelをcaller output/notification/log/audit/artifactに含めない。credential/token/item valueを返すtoolを公開しない |
+| MCP-06 | Existing execution boundary | pluginをlocal stdioで起動し、既存Hub外部認証とOS identity/permissionsの境界を保つ。PP2 core変更、独自認証/approval/elevationなし |
+| MCP-07 | Site route change | pluginのREST requestは指定site routeに届く。本人が明示したroute変更はその指定先を使い記録する。指定なしの他siteへの切替は行わない |
+| MCP-08 | No Hub bypass | pluginからConnect RESTへの通常backend通信は許可する。MCP/plugin失敗時にHub相当clientがpluginを迂回してRESTを直接呼ぶfallbackはしない |
 
-これらはmock MCP server/transportで実行し、live plugin/authは使わない。実際のplugin schema/transportはPP2 repo/connectionが特定された後にcontract fixtureを確定する。
-
+これらはmock MCP/stdio clientとmock Connect REST serverで実行し、live credentialやVault dataは使わない。実際のplugin tool schema/transportはPP2 Hubとの接続実装を確認した後にcontract fixtureへ固定する。
 ## 3. 配備 smoke test cases
 
 全てユーザー承認済みsecret handoffを受けてからsiteごとに順番に行う。tokenやcredential値をshell history/log/chatに出さない。
@@ -64,15 +66,15 @@ host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-
 | DP-07 | Exposure | 外部経路から接続不能かつsite内の許可app hostからだけ到達 |
 | DP-08 | Cache isolation | 各site固有のdata volumeで稼働。他site volume mountまたは共有NFSがない |
 | DP-09 | Evidence | host識別子、時間、image version、heartbeat/health/auth result、Vault identifierだけ記録 |
-| DP-10 | PP2 plugin route | 対象siteのplugin MCP backendがそのsite-local Connectへ結び付くことを実環境で追跡確認。中央/他site経由や未確認routeはpassにしない |
+| DP-10 | Hub/plugin route | Hub相当clientから本repoのlocal stdio pluginを通じ、Connect REST backendが指定site-local APIに到達することを確認。本人の明示route変更は許容して記録し、指定なしの他site切替やHubのplugin迂回をpassにしない |
 
 Compose observerは任意の `monitoring` profileで起動し、Connect本体の起動をgateしない。DP-03の前にunhealthyを示しても、それだけを初回起動失敗としない。DP-06はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
 
-## 4. MCP live integration and negative/rollback tests
+## 4. MCP integration and negative/rollback tests
 
-- Mock MCP testsでunknown tool/write/deleteを拒否し、JSON-RPC protocol error、tool result `isError`, timeout、malformed responseを分類する。
-- Live plugin integrationはexisting plugin connection/authの状態と対象read operationを親へ提示し確認した後に行う。read-only allow-list toolのみを使い、secret contentsはPP2 caller以外へ表示しない。
-- MCP error時にConnect RESTや別credentialへfallbackしない。失敗結果にはtool name/status/correlation idを含め、arguments/result bodyは含めない。
+- Mock integrationはHub相当client→本repositoryのlocal stdio plugin→mock Connect RESTで行う。PP2 coreを変更せず、実際の1Password credential、token、Vault itemを使わない。
+- success、protocol error、tool error、notificationのすべてについて、Hub/Chat向け出力とlog/audit/artifactに定義済み公開metadata以外が現れないことを検証する。禁止フィールドに置いた非secret sentinelもcallerや記録へ漏れず、secret-returning toolが存在しないことを確認する。
+- Live route確認はsite-local backendの実環境検査として別記録する。Connect RESTはpluginの通常backendとして呼び出す。plugin/MCP call失敗時にHubがpluginを迂回してRESTを直接呼ぶfallbackはしない。
 
 ## 5. Negative/rollback tests
 
@@ -105,6 +107,6 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
 - CIのsite jobは各self-hosted runner tagへ固定し、shared runnerを使わない。現在はtag/project accessの準備前なのでCI結果は未実施と記録する。
-- PP2 MCP adapterはtools/list/tools/callとerror/result handlingをmockで試験し、site route selectionの中央/他site silent bypassもnegative testする。live plugin route binding確認はsiteごとの実環境試験として別に報告する。
+- Hub相当client→本repo local stdio plugin→mock Connect RESTをcontract boundaryとし、PP2 core非変更・既存認証/OS権限を維持する。success/error/notificationとログを公開metadata onlyで検証し、secret-returning tool/human approvalを置かない。Connect RESTは通常plugin backendであり、Hubのplugin迂回fallbackだけを拒否する。指定route変更は許容・記録し、無指定の他site切替は拒否する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
