@@ -11,7 +11,7 @@
 | 要件定義 | docs/requirements.md — 501900e704a74f2c277ee2d9809c237d64f2a47f | CredentialMCP identity 1つ/3 runtime pairs、MCP tools/call adapter要件、site専用Runner 3台を追加。現statusは未準備と区別。 |
 | 概要設計 | docs/overview-design.md — 894e318186f44ed24998ddaa058867226071d09f | Connect REST data planeとPP2→plugin MCP call境界を分離し、site-local Connect bindingの確認とsilent bypass禁止、runner/tag/accessの現在値と目標を明記。 |
 | 詳細設計 | docs/detailed-design.md — 9ad2c34e4a3d0cbd0ec4d302c47841e69e117339 | MCP tools/list/call、site-local backend route確認、schema allow-list、error/result安全取扱いを定義。Community 2-cluster例とHelm replica根拠を分け、site runner preconditionを追加。 |
-| 実装計画 | docs/implementation-plan.md — 67c25a51765be9c7e40199d0175bbf8c08a50fe2 | PP2 codebase特定後のadapter実装、site-local routeのmock/live検証、site-bound manual/protected runner jobsを計画。 |
+| 実装計画 | docs/implementation-plan.md — 67c25a51765be9c7e40199d0175bbf8c08a50fe2 | PP2 codebase特定後のadapter実装、site-local routeのmock/live検証、siteごとのself-hosted Runner jobを既存GitLab設定と本人指示に沿って利用し、新しいmanual/protected必須gateは追加しない方針を計画。 |
 | テスト設計 | docs/test-design.md — 2f118988c66500b643faa5fb8f0b5e3402e22fb1 | MCP mock contract/unit、site route negative test、site runner routing/deployment gate試験を追加。live route/auth calls、pipeline実行は未実施。 |
 
 これらは今回の追加要件を含むstage文書のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も維持している。親による今回の五段階・全体独立レビューは完了し、残ブロッカーなしとして実装開始が承認された。  

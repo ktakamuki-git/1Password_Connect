@@ -1,0 +1,60 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+stages:
+  - verify
+
+.plugin-test:
+  stage: verify
+  script:
+    - |
+      set -eu
+      node --version
+      npm --version
+      cd plugins/onepassword-connect
+      npm ci --no-audit --no-fund
+      npm run check
+      npm test
+
+plugin-appv4:
+  extends: .plugin-test
+  tags: [appv4]
+
+plugin-ubutsu2:
+  extends: .plugin-test
+  tags: [ubutsu2]
+
+plugin-oyama:
+  extends: .plugin-test
+  tags: [oyama-wsl]
+
+.python-compose-test:
+  stage: verify
+  script:
+    - |
+      set -eu
+      python3 --version
+      temp_dir=$(mktemp -d)
+      credential_placeholder=$(mktemp)
+      trap 'rm -rf "$temp_dir" "$credential_placeholder"' EXIT
+      python3 -m venv "$temp_dir/venv"
+      "$temp_dir/venv/bin/python" -m pip install --disable-pip-version-check -r tests/requirements.txt
+      "$temp_dir/venv/bin/python" -m unittest discover -s tests -v
+      docker compose version
+      CONNECT_CREDENTIALS_FILE="$credential_placeholder" docker compose -f deploy/docker/compose.yaml config >/dev/null
+
+python-compose-appv4:
+  extends: .python-compose-test
+  tags: [appv4]
+
+python-compose-ubutsu2:
+  extends: .python-compose-test
+  tags: [ubutsu2]
+
+python-compose-oyama:
+  extends: .python-compose-test
+  tags: [oyama-wsl]
