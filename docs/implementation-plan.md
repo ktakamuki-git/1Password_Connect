@@ -60,4 +60,4 @@
 
 ## 実装計画レビュー
 
-ゼロベース確認で「host/VM ID不明」「secret handoff承認が必要」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理し、ホスト依存値とsecret配置だけを実機確認のgateにした。設計レビュー完了後、host-independent templateの実装を開始し、再レビュー前は実装を開始しない。
+ゼロベース確認で「host/VM ID不明」「secret handoff承認が必要」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理し、ホスト依存値とsecret配置だけを実機確認のgateにした。設計レビュー後にhost-independent template、Compose候補、test sourceを保存済み。per-host設定と実配備はhost/runtime確認、secret handoff承認、API readinessのレビュー後に行う。

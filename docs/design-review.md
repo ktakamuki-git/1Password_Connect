@@ -10,7 +10,7 @@
 |---|---|---|
 | 要件定義 | docs/requirements.md — de6c791d59964fae7030b70853284c2b52261ed1 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
 | 概要設計 | docs/overview-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
-| 詳細設計 | docs/detailed-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
+| 詳細設計 | docs/detailed-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | 同一workflow再利用とsite別secret handoff/API認証を分離。初回起動をprocess/heartbeat→認証GET→初回sync readiness→Vault ID→app切替に整列。 |
 | 実装計画 | docs/implementation-plan.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | Docker Compose候補とrootless health observerを実装し、test sourceを追加。host-specific適用とcredential配置は別gate。 |
 | テスト設計 | docs/test-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | JSON Schema、Compose contract/unit test、site別runtime試験を区別。Compose healthはAPI /health dependency statusをrootless sidecarで確認する。 |
 
@@ -42,7 +42,7 @@ Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optiona
 
 ## 4. 実施状態と次のgate
 
-de6c791dの設計全体は親の独立レビューで残指摘なし・実装開始可と確認された。詳細設計の旧停止条件は現行行78で解消済みであり、3siteworkflow再利用とsite別secret handoff/API認証を分けている。
+de6c791dの設計全体は親の独立レビューで残指摘なし・実装開始可と確認された。以降の修正で3site workflow再利用とsite別secret handoff/API認証を分け、初回起動の順序とoptional observer profileを明記した。
 
 その承認後にruntime-neutral profile/Schema、Docker Compose候補、health probe、unit/contract test sourceをGitLab branchへ保存した。今回の初回同期レビューに合わせ、順序をprocess/heartbeat → 承認済み初回auth GET → API `/health` のsync/sqlite ACTIVE待ち → Vault ID確認 → app cutoverに修正した。observerは `monitoring` profileで任意起動し、初回 `TOKEN_NEEDED` 中のunhealthyだけで失敗判定しない。test codeはJSON Schema validation、Compose contract、API `/health` のACTIVE/TOKEN_NEEDED/non-200/communication failure/malformed JSON/missing dependency casesを対象にする。テストコードは保存済みだが、`python -m unittest` と `docker compose config` は未実行であり、PASSとは報告していない。
 
