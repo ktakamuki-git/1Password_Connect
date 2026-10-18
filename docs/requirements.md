@@ -64,7 +64,7 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 - APIとSyncのvolume要件を「拠点間共有volume不要」と混同する恐れ → 拠点内共有のみを要件化。
 - 既存登録1つとdeployment3つが別概念である → 登録数とAPI/Syncコンテナ数を明記。
 - 3拠点のOS/ネットワークが未確認 → 推測で配備せず、ホスト別調査を受け入れ条件に追加。
-- 同一workflowの複数deployment利用は公式スタッフ回答で確認。credentialのsite別配置承認と実API認証確認は別条件にした。
+- Community利用者の2-cluster同一credentials file実例と公式Helm replica/credential Secret構成を区別して記録。既存tokenを3つの独立APIで使えることは設計推論であり、実site認証まで未確認。新規登録/追加tokenの承認gateは設けない。secret配布操作が必要な場合は対象siteと手順を親へ明示し、安全なhandoffを使う。
 - screenshot状態は登録/tokenの存在のみでデプロイ/認証確認ではない → 認証受け入れ条件を別途定義。
 - PP2→1Password plugin MCPの `tools/call` 経路が未記載 → tools/list/allow-list/read-only call/result/error契約を受け入れ条件と設計に追加。PP2のcodebase/具体tool schemaは未確認。
 - CI停止を目標状態と混同 → self-hosted runner 3台をsite別に使う目標へ改め、現snapshotでtagなし/project許可なしの事実と別担当設定を明記。
