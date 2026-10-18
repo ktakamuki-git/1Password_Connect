@@ -75,4 +75,4 @@ OS/実行基盤、volume driver、host名/IP、TLS終端は未確認のため固
 - Sync health portをアプリ公開と混同しないよう整理。
 - 認証試験でtokenをCLI引数/ログに出したりVault内容を表示する危険を除き、GET /v1/vaultsの識別情報だけを見る方針へ変更。
 - write権限確認のために本Vaultを変更しない。権限metadataからread-onlyを確認する。
-- 3site同時利用と登録の関係が公式資料で確約されるまでcredential配布をstop conditionにした。
+- 同一Secrets Automation workflow再利用の公式staff回答を根拠にし、siteごとの安全なsecret handoff承認とAPI認証試験を別条件として明記した。
