@@ -47,3 +47,14 @@ Compose/test source updated in e9ff157175aa6c336d9aba7bb65f33968e0c4fef: optiona
 Compose候補はofficial API/Sync 1.8.3、API loopback bind、same-site named volume、secret path reference、rootless aggregate health observerを持つ。実hostのDocker Compose runtime/port/secret file permissionは確認前なので、実適用・起動はしていない。credential/token配置はsiteごとの別safe handoff承認後に限る。MiniPC-OyamaはWSL前提だがdistro/runtime/autostart/localhost route未確認。
 
 実装commit `0ec7e245792a0e3f2fda59321e17b63d34f90367` はNode 24 MCP stdio plugin、site固定route、公開metadataのみの応答と5つのmock contract testを `plugins/onepassword-connect/` に追加した。follow-up `80bf3b83002e526d1976f4ff09914898061adf32` は未知toolのHub allow-list拒否とprotocol error入力非反射のテスト/README記述を整えた。PP2 Hub branch `implementation/mcp-hub-core` のread-only確認では、Hubが未知toolをdownstream送信前に固定 `Unknown tool name` エラーで拒否する実装を確認した（実Hubの統合実行は未実施）。最終Windows scratch harnessで `npm run check` が成功し、`npm test` は5/5件成功。これは指定Ubutsu2ローカルclone上の実行ではない。GitLab treeにCI設定はなく、project jobsはdisabled、commit応答の `last_pipeline` はnull。pipeline/runnerは起動していない。secret値は取得もcommitもしておらず、live MCP call、Connect認証、配備、3拠点runtime確認は未実施。既存Compose/Python testsと `docker compose config` も未実行。group/runner/project設定は変更していない。MR !1はdraftを維持し、説明文もこの状態に同期する。
+
+
+## 実装検証追記（2026-10-18）
+
+この追記より前の「実装テスト未実施」は、実装をGitLabへ同期する前の記録です。pluginの境界強化とテスト追加はcommit 7c581762daf031c8e320b61af82bfd47fb336698にあります。実行結果、承認済みテスト計画との対応、未実施項目は docs/implementation-validation.md に記録しました。
+
+Node.js v24.19.0で npm run check が成功し、PP2 Hub source snapshotをPP2_HUB_ROOTに指定した npm test は22/22成功しました。PP2の実際のconfig/downstream/HTTP server moduleを使ったloopback mock Connect統合試験を含み、実Hub配備、既存OS identity、実Connect認証は検証していません。
+
+Compose healthcheckのPython単体試験は6/6成功し、Python compileとPyYAMLによるCompose YAML parseも成功しました。jsonschema==4.26.0が不足しsandbox networkがWinError 10013で拒否されたため、schemaを使う完全なPython suiteは未実行です。Docker/Compose CLIがないため docker compose config も未実行です。
+
+これらはWindows scratch workspaceでのテスト結果であり、Ubutsu2正式clone上のローカル試験ではありません。WSL Service E_ACCESSDENIEDは迂回していません。GitLab CIは実行せず、project jobs/buildsとshared/group runnersはdisabled、対象plugin groupのrunner一覧は0台でした。Connect秘密値、認証、配備、3拠点実動作は未実施です。
