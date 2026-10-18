@@ -7,7 +7,7 @@
 1. **単体/static tests:** manifest/設定の構文と静的制約をローカルrepoで検証。
 2. **配備確認:** 各hostでcontainer、volume、API/Sync healthが成立することを確認。
 3. **3拠点実動作:** 各siteのAPIが認証し、同じVaultを読み取れることを確認。
-4. **GitLab CI:** 本プロジェクトでは停止中。pipelineやshared/group runnerを起動して試験しない。
+4. **Self-hosted CI:** 3 site専用runnerごとのpipeline結果。shared runnerにfallbackしない。現在のrunner tag/project accessは未設定なので、外部担当の準備完了まで実行結果は保留。
 
 このリポジトリの実行先local cloneは確認できていないため、以下はテスト計画であってテスト実施結果ではない。
 
@@ -23,14 +23,30 @@
 | ST-06 | Sync/API inner network | APIとSyncの通信はsite-local。Sync health/bus portをapp/publicへpublishしない |
 | ST-07 | Vault contract | 共通templateが許可Vaultのplaceholder/scopeを参照し、site-specific metadataも同じVault identity/read-only scopeを使う |
 | ST-08 | Target identity | APPv4=VM102確認あり、APPv3 targetはなし。MainUbutsu2/MiniPC-Oyamaが正式host名と一致。MiniPC-OyamaはWSLのdistribution/runtime/autostart確認後に合格 |
-| ST-09 | CI avoidance | GitLab CI/jobs/runners disabledのread-only project settings確認。CI file, pipeline trigger, runner commandを追加しない |
+| ST-09 | Self-hosted runner routing | `appv4` / `main-ubutsu2` / `oyama-wsl` jobが対応tagのnon-shared runnerだけで動き、他site/shared runnerへfallbackしない。runner identity/tagをjob内で照合する |
+| ST-15 | PP2 MCP adapter contract | `tools/list` metadataとallow-list/schema、JSON-RPC `tools/call` envelope、protocol error / `isError`, `content`/`structuredContent`を扱い、unknown/write toolを拒否 |
+| ST-16 | MCP secret hygiene | call arguments/result/item content/token/credential fileをlogs/artifacts/auditへ出さない。最低限のcorrelation/status metadataだけを記録する |
+| ST-17 | Site deployment gate | 各site deploy jobがprotected/manualで、site tagに固定され、未設定のrunnerやshared runnerを使わない |
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 | ST-11 | Optional rootless health observer | `monitoring` profileで任意起動、UID 65532、read-only、cap_drop ALL、no-new-privileges。`TOKEN_NEEDED` は初回auth GET前のnot-readyを表し、observer unhealthyだけでstartup failureと判定しない |
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
 | ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
 | ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
 
-host-independent profileとCompose候補のST-01〜ST-06/09/10〜14はhost inventory前にローカル静的/unit testで検証できる。ただし現状はテストコードをGitLabへ保存した段階であり、実行結果は未取得である。ST-07のsite-specific scope metadataとendpoint/resource/volume values、ST-08は該当host/1Password metadata確認後に検査する。GitLab CIは使わない。
+host-independent profile、Compose候補、MCP mock contractのST-01〜ST-06/ST-10〜ST-17はhost inventory前にローカル静的/unit testで検証できる。現状はテストsourceをGitLabへ保存した段階で、実行結果はない。ST-07のsite-specific scope metadataとendpoint/resource/volume、ST-08の実host情報は対象の確認後に検査する。CIは3 self-hosted runner専用に設計する。2026-10-18 snapshotではrunnerはonline/activeだがtagが空でproject accessもないため、ST-09/17の実行は別担当の設定確認後に限る。
+
+## 2.1 PP2 MCP adapter unit/contract tests
+
+| ID | 検査 | 合格条件 |
+|---|---|---|
+| MCP-01 | Tool discovery | `tools/list` JSON-RPC responseをparseし、tool nameと`inputSchema`をallow-listへ照合 |
+| MCP-02 | Call envelope | allow-list済みread toolを `tools/call` JSON-RPC 2.0に載せ、unique correlation idとschema-valid argumentsを送る |
+| MCP-03 | Unknown/disallowed tool | unknown、write、delete toolやschema違反argumentをtransportへ送らず拒否 |
+| MCP-04 | Result/errors | protocol `error`、`result.isError`、success `content`、optional `structuredContent`、timeoutを別状態としてPP2 callerへ返す |
+| MCP-05 | Secret-safe output | call inputs/results/item fields/tokens/credentialsをlog/audit/artifactへ出さない。必要な最小read responseだけをcallerへ返す |
+| MCP-06 | Human approval | secret-bearing read toolはユーザー確認を経てからcallする。denyはserver callなしで終了 |
+
+これらはmock MCP server/transportで実行し、live plugin/authは使わない。実際のplugin schema/transportはPP2 repo/connectionが特定された後にcontract fixtureを確定する。
 
 ## 3. 配備 smoke test cases
 
@@ -50,7 +66,13 @@ host-independent profileとCompose候補のST-01〜ST-06/09/10〜14はhost inven
 
 Compose observerは任意の `monitoring` profileで起動し、Connect本体の起動をgateしない。DP-03の前にunhealthyを示しても、それだけを初回起動失敗としない。DP-06はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
 
-## 4. Negative/rollback tests
+## 4. MCP live integration and negative/rollback tests
+
+- Mock MCP testsでunknown tool/write/deleteを拒否し、JSON-RPC protocol error、tool result `isError`, timeout、malformed responseを分類する。
+- Live plugin integrationはexisting plugin connection/authの状態と対象read operationを親へ提示し確認した後に行う。read-only allow-list toolのみを使い、secret contentsはPP2 caller以外へ表示しない。
+- MCP error時にConnect RESTや別credentialへfallbackしない。失敗結果にはtool name/status/correlation idを含め、arguments/result bodyは含めない。
+
+## 5. Negative/rollback tests
 
 - tokenなし/不正tokenのAPI要求は401/unauthorizedで拒否されることを確認する。ただし実secretをlogに残さない。
 - 非許可ネットワークからAPIへ接続できないことを確認する。
@@ -58,7 +80,7 @@ Compose observerは任意の `monitoring` profileで起動し、Connect本体の
 - 一siteを停止/rollbackしても残りsiteとそのvolumeに副作用がないことを確認する。volume deletionはtestに含めない。
 - 作業後にGit branch diffからsecret値・host access token・public addressを再確認する。
 
-## 5. 実施記録テンプレート
+## 6. 実施記録テンプレート
 
 各testには以下を記録する。未確認欄を推測で埋めない。
 
@@ -74,12 +96,13 @@ Compose observerは任意の `monitoring` profileで起動し、Connect本体の
 
 secret value、Connect credentials JSON、Vault item value、Bearer headerは記録に含めない。
 
-## 6. テスト設計レビュー
+## 7. テスト設計レビュー
 
 ゼロベースレビューの結果:
 - static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
-- GitLab pipeline/runnerを使わない。
+- CIのsite jobは各self-hosted runner tagへ固定し、shared runnerを使わない。現在はtag/project accessの準備前なのでCI結果は未実施と記録する。
+- PP2 MCP adapterはtools/list/tools/callとerror/result handlingをmockで試験し、live plugin testとは別に報告する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
