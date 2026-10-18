@@ -11,7 +11,7 @@
 | 要件定義 | docs/requirements.md — de6c791d59964fae7030b70853284c2b52261ed1 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
 | 概要設計 | docs/overview-design.md — de6c791d59964fae7030b70853284c2b52261ed1 | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
 | 詳細設計 | docs/detailed-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | 同一workflow再利用とsite別secret handoff/API認証を分離。初回起動をprocess/heartbeat→認証GET→初回sync readiness→Vault ID→app切替に整列。 |
-| 実装計画 | docs/implementation-plan.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | Docker Compose候補とrootless health observerを実装し、test sourceを追加。host-specific適用とcredential配置は別gate。 |
+| 実装計画 | docs/implementation-plan.md — a0dfd82e7c07abd4a60a9fe8c34c1883c552d5c8 | Docker Compose候補と任意health observerを記録。初回sync readiness後のsiteごとのapp切替を別gateにする。 |
 | テスト設計 | docs/test-design.md — e9ff157175aa6c336d9aba7bb65f33968e0c4fef | JSON Schema、Compose contract/unit test、site別runtime試験を区別。Compose healthはAPI /health dependency statusをrootless sidecarで確認する。 |
 
 これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。MiniPC-OyamaのWSL前提更新も含む。  
