@@ -49,7 +49,7 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 
 公式資料はConnect serverのdeploy時に一意の `1password-credentials.json` が生成され、serverごとにトークンが属すること、APIとSyncが各deployment内で同じ暗号化data volumeを使うこと、Connect Helm chartがdeploymentのreplica数を持つことを示す。これをもとに「登録CredentialMCP 1つを3拠点のruntime replicaで実行する」案を採用する。
 
-ただし、公式文書の確認範囲には「互いに独立した3拠点のCompose/clusterへ同じ登録と同じtokenを同時配布してよい」とする明記は見つかっていない。よって実装前にこの形が同一論理serverの複製としてサポートされることを親レビューで確認する。別登録が必要だと判明した場合は登録・tokenを勝手に追加せず停止する。
+1Password公式コミュニティのスタッフ回答は、同じSecrets Automation workflowを複数のKubernetes Operator/deploymentで利用できることを示している。また公式Helm chartはConnect deploymentのreplica数を定義する。これを根拠に、CredentialMCP登録1つと既存credential/tokenを同一logical identityとして3拠点で使う。別登録や追加tokenは作らない。\n\nworkflow再利用の仕様確認とcredentialを各hostへ配置する承認は別である。1password-credentials.json/tokenの配置にはユーザー/親の安全なhandoff承認を得る。配備後は各site APIの認証成功を個別に実動作確認する。[Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315)
 
 ## 7. レビュー
 
@@ -58,5 +58,5 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 - APIとSyncのvolume要件を「拠点間共有volume不要」と混同する恐れ → 拠点内共有のみを要件化。
 - 既存登録1つとdeployment3つが別概念である → 登録数とAPI/Syncコンテナ数を明記。
 - 3拠点のOS/ネットワークが未確認 → 推測で配備せず、ホスト別調査を受け入れ条件に追加。
-- 同一tokenの独立拠点利用を公式資料が明示するか未確認 → 実配備前の明示gateにした。
+- 同一workflowの複数deployment利用は公式スタッフ回答で確認。credentialのsite別配置承認と実API認証確認は別条件にした。
 - screenshot状態は登録/tokenの存在のみでデプロイ/認証確認ではない → 認証受け入れ条件を別途定義。
