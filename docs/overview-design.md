@@ -45,14 +45,18 @@ No cache volume shared between sites
 ## 2.1 PP2から1Password plugin MCPへの呼び出し
 
 ```text
-PP2 ──MCP JSON-RPC tools/call──> [PP2 MCP adapter] ──existing plugin connection──> [1Password plugin MCP]
-                                      │
-                                      ├─ tools/list でtool/schemaを取得
-                                      ├─ allow-list内のread toolだけを呼び出す
-                                      └─ content / structuredContent / isErrorを型付きで返す
+外部client ──既存の認証──> [PP2 Hub] ──localstdio / 設定済みOS identity──> [このrepoの1Password plugin module]
+                                                                      │
+                                         指定された拠点のConnect API REST endpoint
+                                                                      ▼
+                                                         [site-local Connect API]
 ```
 
-このadapterはMCPのcall境界であり、Connect REST APIそのものではない。PP2の各site用plugin MCP接続が、そのsite-local Connect経路に結び付くことを実環境で追跡・確認する。中央または別siteのConnectへ向いている場合や経路が確認できない場合はsite-local準拠と見なさず、中央/他siteへのsilent bypassやDirect REST fallbackを行わない。既存plugin接続のtransport、server identity、tool名/schemaとConnect backendの対応は稼働環境から確認するまで固定しない。MCP標準の `tools/list` とJSON-RPC 2.0 `tools/call` envelopeを使い、未確認tool名を推測しない。read-only allow-list、caller approval、error分類、timeout、結果/引数をsecret-safeに扱う。新credential発行は行わない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+PP2 Hubは既存の外部認証を担当し、plugin moduleはHubがlocalstdio downstreamとして起動する。plugin processはHubの既存OS実行identityと権限で動き、独自認証、caller approval、role、権限昇格は追加しない。PP2 coreにも変更を加えず、このrepository内のplugin分離moduleとして実装する。
+
+pluginはMCP `tools/list` で定義済みmetadata/schemaを公開し、許可されたread-only toolをJSON-RPC 2.0 `tools/call` で実行する。Connect APIとの通信にはsiteごとに指定された既存の経路と認証情報を使う。現在の設計は各site-local Connect APIを対象とするが、本人が明示的に指定した経路変更は妨げない。指定なしに別siteへ黙って切り替えず、実際のbackend routeを環境ごとに確認する。Direct RESTはこのpluginのConnect API backendであり、MCP経路のsilent fallbackを意味しない。具体的なtool名/schema、transport、backend routeは確認後に固定し、推測しない。
+
+Hub/Chat向けMCP出力では、成功結果、error、notificationのいずれも定義済みの公開metadataへ射影する。`content` や `structuredContent` をそのまま転送せず、secret値、credential file本文、Bearer token、secret-bearing resultを返さない。秘密値が必要な利用は許可されたconsumer内部の別経路に限定し、値をChatへ返すtoolは作らない。既存のHub認証・OS permissionを尊重し、認可のない操作や許可外toolは実行しない。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 ## 3. ネットワーク
 
@@ -63,11 +67,11 @@ PP2 ──MCP JSON-RPC tools/call──> [PP2 MCP adapter] ──existing plugin
 
 ## 4. CI/Runner構成
 
-目標はself-hosted runnerをsiteごとに1台ずつ使用すること。job tagは `appv4`、`main-ubutsu2`、`oyama-wsl` とし、各siteのdeploy jobは対応するrunnerだけで実行する。shared runnerへのfallbackは設けず、deploymentはsite別のmanual/protected jobとして分ける。
+目標はself-hosted runnerをsiteごとに1台ずつ使用すること。job tagは `appv4`、`main-ubutsu2`、`oyama-wsl` とし、各siteのjobは対応するrunnerだけに割り当てる。shared runnerへのfallbackは設けない。job triggerや保護は既存のGitLab設定と本人指示に従い、manual/protectedを新しい必須条件として追加しない。
 
 2026-10-18のGitLab読み取り結果では、plugin subgroupに非shared group runnerが3台あり、説明は `appv4`、`main-ubutsu2`、`oyama-wsl`、statusはonline/activeだった。一方、runner tagは全て空で、project runner listは0件。projectの `group_runners_enabled=false`、`jobs_enabled=false`、`builds_access_level=disabled` も確認した。したがって目標のsite mappingは既存runnerを使う案だが、現状のままjobを起動できるとは見なさない。group/project runner accessやtag付与などの設定は別担当の作業とし、この設計作業から変更しない。
 
-CIはConnect tokenやcredential fileをGitLab variable/artifactに置かない。runner hostに管理される安全なfile referenceを使う。test/deployのcommit triggerやmanual実行は親の全体レビューと外部runner設定が揃った後に計画する。
+CIはConnect tokenやcredential fileをGitLab variable/artifactに置かない。runner hostに管理される安全なfile referenceを使う。test/deployの実行時期とtriggerは、親の全体レビュー、外部runner設定、既存のGitLab保護設定、本人指示に従って決める。
 
 ## 5. 技術選定の決め方
 
@@ -88,6 +92,6 @@ image tagは実装時に公式の対応版を調べて明示的に固定する�
 - 「拠点間volume共有なし」がAPI/Sync間の必要なvolumeまで否定する読み違いを解消し、ローカル3 volumeにした。
 - 登録1件、runtime pair 3件、コンテナ6個を分けて記載した。
 - 2 clusterの同一credentials file使用はCommunity利用者の実例、Helm replicaは単一deploymentの公式設定として区別。3 siteでの既存token認証は設計仮説であり、実地試験前に未確認としている.
-- PP2→1Password plugin MCPはConnect RESTと混同せず、MCP tools/list / tools/call adapter契約に加え、plugin backendがsite-local Connectへ結び付くことの実環境確認とsilent bypass禁止を明記した。
+- PP2→1Password pluginはこのrepoの分離moduleとしてHubのlocalstdio downstreamになる。既存外部認証/OS権限を使い、success/error/notificationを公開metadataへ射影してsecret-bearing結果をHub/Chatへ返さない。site-local routeを確認し、無断route changeだけを禁じ、本人指定の経路変更は許容する。
 - CI targetをsite専用self-hosted runner 3台へ変更。現状runnerはonlineでもtag/project accessが未設定のため、別担当の設定完了前にpipelineは起動しない。
 - ネットワークやcontainer engine未確認のため、host/IP/port mappingは設計で決めず実調査へ送った。
