@@ -1,7 +1,7 @@
 # 要件定義: 1Password Connect 3拠点構成
 
 作成日: 2026-10-18  
-対象: GitLab project `87779016` / `ktakamuki_wsl/app/1Password_Connect`
+対象: GitLab project `87779016` / `ktakamuki_wsl/pc-platform/plugin/1Password_Connect`
 
 ## 1. 目的
 
