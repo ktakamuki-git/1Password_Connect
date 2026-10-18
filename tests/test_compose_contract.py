@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ class ComposeContractTests(unittest.TestCase):
 
         unsafe = copy.deepcopy(profile)
         unsafe["network"]["public_unauthenticated_api"] = True
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             validator.validate(unsafe)
 
     def test_official_connect_images_use_same_pinned_release(self) -> None:
