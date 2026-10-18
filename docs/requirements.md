@@ -49,7 +49,9 @@ APPv4の申告情報は現地確認済みではない。APPv3へ誤配備しな�
 
 公式資料はConnect serverのdeploy時に一意の `1password-credentials.json` が生成され、serverごとにトークンが属すること、APIとSyncが各deployment内で同じ暗号化data volumeを使うこと、Connect Helm chartがdeploymentのreplica数を持つことを示す。これをもとに「登録CredentialMCP 1つを3拠点のruntime replicaで実行する」案を採用する。
 
-1Password公式コミュニティのスタッフ回答は、同じSecrets Automation workflowを複数のKubernetes Operator/deploymentで利用できることを示している。また公式Helm chartはConnect deploymentのreplica数を定義する。これを根拠に、CredentialMCP登録1つと既存credential/tokenを同一logical identityとして3拠点で使う。別登録や追加tokenは作らない。\n\nworkflow再利用の仕様確認とcredentialを各hostへ配置する承認は別である。1password-credentials.json/tokenの配置にはユーザー/親の安全なhandoff承認を得る。配備後は各site APIの認証成功を個別に実動作確認する。[Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315)
+1Password公式コミュニティのスタッフ回答は、同じSecrets Automation workflowを複数のKubernetes Operator/deploymentで利用できることを示している。また公式Helm chartはConnect deploymentのreplica数を定義する。これを根拠に、CredentialMCP登録1つと既存credential/tokenを同一logical identityとして3拠点で使う。別登録や追加tokenは作らない。
+
+workflow再利用の仕様確認とcredentialを各hostへ配置する承認は別である。1password-credentials.json/tokenの配置にはユーザー/親の安全なhandoff承認を得る。配備後は各site APIの認証成功を個別に実動作確認する。[Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315)
 
 ## 7. レビュー
 
