@@ -20,7 +20,9 @@ OS/実行基盤、volume driver、host名/IP、TLS終端は未確認のため固
 - Connect tokenが対象Vaultの読み取りのみを許すことを、値を表示せずアカウント側の権限情報で確認する。読み取り専用でない場合は既存credentialを変更せず、親に権限変更の必要性を報告する。
 - ChromeVaultなどitem名/内容をAPI応答やtest logに記録しない。受け入れ記録は成功/失敗と応答statusだけにする。
 
-公式Connect conceptsによるとcredentials fileはConnect serverごとに一意で、serverは1つ以上のtokenを持ち、tokenはそのserverが許可されたVaultへアクセスするためのもの。従って3拠点は同じlogical Connect server identityのreplicaでなければならない。3拠点独立deploymentが同一tokenを受け入れることは、公式文書上で明記されていないため、3拠点へのcredential投入前に確認を残す。[Connect concepts](https://www.1password.dev/connect/concepts) / [Get started](https://www.1password.dev/connect/get-started)
+公式Connect conceptsではcredentials fileはserverごとに生成され、server tokenはその許可Vaultへアクセスする。同一Secrets Automation workflowを複数のKubernetes Operator/deploymentが利用できる旨は公式コミュニティスタッフ回答で確認済みであり、CredentialMCPの同一logical identity/既存tokenを3拠点に配置する案と整合する。別登録や追加tokenは作らない。[Connect concepts](https://www.1password.dev/connect/concepts) / [Official 1Password community staff answer](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315)
+
+この仕様確認はcredential file/tokenを各hostへ配置する承認と異なる。secret placementはsiteごとに安全なhandoff承認を得てから行い、配備後に各APIを個別に認証試験する。
 
 ## 3. コンテナ設定項目
 
@@ -32,7 +34,7 @@ OS/実行基盤、volume driver、host名/IP、TLS終端は未確認のため固
 | OP_SESSION | container内のcredentials file pathを指定。公式環境変数。 |
 | Local data | APIとSyncが同じ拠点内volumeを共有。公式default pathは /home/opuser/.op/data。 |
 | API endpoint | APIのみアプリに公開。HTTP default 8080、TLS時のHTTPS default 8443。APIのhealth endpointは /health と /heartbeat。 |
-| Sync endpoint | health port default 8081は拠点内運用監視だけ。アプリの接続先にしない。 |
+| Sync endpoint | health portは選択したdeployment設定に従う。汎用Connect containerのOP_HTTP_PORT defaultは8080、公式Helm chartはSyncのHTTP portを8081に設定。拠点内監視だけに使い、アプリへ公開しない。 |
 | Container bus | API/Sync間の内部busだけを許可。public/host networkに露出しない。 |
 | Resource limits | 実VM/hostの空きRAM/CPUを確認後に指定。APPv4の申告RAM値を3拠点共通のlimitと仮定しない。 |
 
