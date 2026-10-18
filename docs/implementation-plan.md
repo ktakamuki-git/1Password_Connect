@@ -22,7 +22,8 @@
 
 ## Phase 3 — host-independent template (設計レビュー完了後)
 
-1. secret value、host名/IP、port mapping、resource limit、site固有volume pathを含めない共通templateを作成する。実行方式は既存repo/host inventoryと整合する選択肢にし、実機未接続でも記述できる共通部分だけを実装する。\n2. templateの作成だけでは実機への配置・起動を行わない。
+1. secret value、host名/IP、port mapping、resource limit、site固有volume pathを含めない共通templateを作成する。実行方式は既存repo/host inventoryと整合する選択肢にし、実機未接続でも記述できる共通部分だけを実装する。
+2. templateの作成だけでは実機への配置・起動を行わない。
 
 ## Phase 4 — hostごとのruntime設定と配備
 
