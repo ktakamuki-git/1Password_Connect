@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import copy
+import json
 import unittest
 from pathlib import Path
 
 import yaml
+from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +18,22 @@ class ComposeContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
         cls.services = cls.compose["services"]
+
+    def test_site_profile_matches_its_json_schema(self) -> None:
+        profile = json.loads(
+            (ROOT / "templates" / "connect-site-profile.example.json").read_text()
+        )
+        schema = json.loads(
+            (ROOT / "templates" / "connect-site-profile.schema.json").read_text()
+        )
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        validator.validate(profile)
+
+        unsafe = copy.deepcopy(profile)
+        unsafe["network"]["public_unauthenticated_api"] = True
+        with self.assertRaises(Exception):
+            validator.validate(unsafe)
 
     def test_official_connect_images_use_same_pinned_release(self) -> None:
         api = self.services["connect-api"]["image"]
