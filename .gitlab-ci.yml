@@ -12,13 +12,28 @@ stages:
   stage: verify
   script:
     - |
-      set -eu
-      node --version
-      npm --version
-      cd plugins/onepassword-connect
-      npm ci --no-audit --no-fund
-      npm run check
-      npm test
+      set +e
+      overall_status=0
+      node_bin="$(command -v node || command -v nodejs)"
+      if [ -z "$node_bin" ]; then
+        echo "Node.js is unavailable on this shell runner."
+        overall_status=1
+      else
+        "$node_bin" --version || overall_status=1
+        if ! command -v npm >/dev/null 2>&1; then
+          echo "npm is unavailable on this shell runner."
+          overall_status=1
+        else
+          npm --version || overall_status=1
+          (
+            cd plugins/onepassword-connect &&
+            npm ci --offline --no-audit --no-fund &&
+            npm run check &&
+            npm test
+          ) || overall_status=1
+        fi
+      fi
+      exit "$overall_status"
 
 plugin-appv4:
   extends: .plugin-test
@@ -36,16 +51,37 @@ plugin-oyama:
   stage: verify
   script:
     - |
-      set -eu
-      python3 --version
-      temp_dir=$(mktemp -d)
-      credential_placeholder=$(mktemp)
+      set +e
+      overall_status=0
+      python3 --version || overall_status=1
+      python3 -m pip --version || overall_status=1
+      python3 -m pip cache list
+      temp_dir="$(mktemp -d)" || exit 1
+      credential_placeholder="$(mktemp)" || { rm -rf "$temp_dir"; exit 1; }
       trap 'rm -rf "$temp_dir" "$credential_placeholder"' EXIT
-      python3 -m venv "$temp_dir/venv"
-      "$temp_dir/venv/bin/python" -m pip install --disable-pip-version-check -r tests/requirements.txt
-      "$temp_dir/venv/bin/python" -m unittest discover -s tests -v
-      docker compose version
-      CONNECT_CREDENTIALS_FILE="$credential_placeholder" docker compose -f deploy/docker/compose.yaml config >/dev/null
+
+      python3 -m pip install --disable-pip-version-check --no-index --target "$temp_dir/python" -r tests/requirements.txt
+      python_status=$?
+      if [ "$python_status" -eq 0 ]; then
+        PYTHONPATH="$temp_dir/python${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest discover -s tests -v || overall_status=1
+      else
+        echo "Required Python packages are not available from the local pip cache; no network access was attempted."
+        overall_status=1
+      fi
+
+      if command -v docker >/dev/null 2>&1; then
+        docker compose version
+        compose_version_status=$?
+        if [ "$compose_version_status" -eq 0 ]; then
+          CONNECT_CREDENTIALS_FILE="$credential_placeholder" docker compose -f deploy/docker/compose.yaml config >/dev/null || overall_status=1
+        else
+          overall_status=1
+        fi
+      else
+        echo "Docker is unavailable on this shell runner."
+        overall_status=1
+      fi
+      exit "$overall_status"
 
 python-compose-appv4:
   extends: .python-compose-test
