@@ -63,7 +63,7 @@ stages:
       compose_url="$compose_release_url/docker-compose-linux-x86_64"
       echo "Downloading official Docker Compose standalone: $compose_url"
       curl --fail --location --show-error --output "$tool_dir/docker-compose" "$compose_url"
-      compose_sha="$(awk '{ name = $NF; sub(/^\\*/, "", name); sub(/^.*\\//, "", name); if (name == "docker-compose-linux-x86_64" && $1 ~ /^[[:xdigit:]]+$/) { print $1; exit } }' "$tool_dir/compose-checksums.txt")"
+      compose_sha="$(awk '{ name = $NF; sub(/^[*]/, "", name); n = split(name, parts, "/"); if (parts[n] == "docker-compose-linux-x86_64" && $1 ~ /^[[:xdigit:]]+$/) { print $1; exit } }' "$tool_dir/compose-checksums.txt")"
       case "$compose_sha" in
         ''|*[!0123456789abcdefABCDEF]*) echo "Docker Compose checksum entry is missing or invalid."; exit 1 ;;
       esac
