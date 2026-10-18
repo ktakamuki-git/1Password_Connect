@@ -10,9 +10,9 @@
 |---|---|---|
 | 要件定義 | docs/requirements.md — 012f30f28c9554fd4e30f30052cb5f4b94c2b186 | CredentialMCP登録1つとruntime 3拠点を分け、公式staff回答で同一workflow複数deploymentを確認。credential配置承認とsite別auth試験は別gate。 |
 | 概要設計 | docs/overview-design.md — 40ea97e07d5effb8742dac08ea8e810a687d55dc | app→local API、site-local volumeをAPI/Syncが使用し、Sync→1Password Cloudの方向に修正。拠点間volume共有なし。 |
-| 詳細設計 | docs/detailed-design.md — ef572afdeab8a6c4d1ab370b9252f4254618da73 | 同一workflow再利用を公式staff回答で明記。汎用OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081を区別。secret placementと実動作試験は残す。 |
-| 実装計画 | docs/implementation-plan.md — 9484c83419b050b3aebcd2014813f260a73bda5c | design sign-off後のhost-independent/secret-free template実装と、host-specific設定/配備の確認を分離。実機未接続をtemplate作成の阻害条件にしない。 |
-| テスト設計 | docs/test-design.md — 74faf614bae8b172a859528a130bfa43b5173954 | host-independent templateの静的試験とsite別runtime試験を分離。Sync healthは実設定portで確認し、8081を汎用defaultとしない。 |
+| 詳細設計 | docs/detailed-design.md — 4268322b33f8dc926ecf7005d47d15de9e2066c3 | 行78の残存した旧停止条件を削除し、同一workflow再利用とsite別secret handoff/API認証試験を分離。OP_HTTP_PORT default 8080と公式Helm chart Sync port 8081も区別。 |
+| 実装計画 | docs/implementation-plan.md — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3 | runtime-neutralなJSON site profile/Schemaを実装し、host-specific設定と配備をhost inventory後に限定。 |
+| テスト設計 | docs/test-design.md — 7f8dc4b6fceddeb91cfcc2902518171942da3ef3 | JSON profile/Schema、既知invariant、placeholder、site別runtime試験を区別。Sync healthは実設定portで確認。 |
 
 これらは修正後のGitLab commit SHA。元のmain branchとREADMEは変更していない。
 
@@ -36,6 +36,8 @@
 
 ## 4. 実施状態と次のgate
 
-設計文書は指摘に沿って修正済みで、独立再レビュー待ち。設計レビュー完了前の実装コードは作成しない。レビュー完了後、secretを含まない共通template実装・静的検証を進められる。各拠点のruntime/endpoint/volume valuesはhost inventory後に設定する。credential/tokenの配置には対象hostごとの安全なhandoff承認が必要で、各APIの認証・Sync状態は配備後に個別確認する。
+詳細設計の残件は行78で修正し、旧停止条件が残っていないことを確認した。これを受けて、host/runtimeに依存しないsecret-free site profile、JSON Schema、使用上の注意を実装した。profile JSONのparseと主要invariant（CredentialMCP、API/Sync各1、同一release placeholder、secret値なし、site-local volume、public unauthenticated APIなし）を一時的な静的確認でpassした。これはローカルrepo上のテスト実施ではなく、完全なJSON Schema validatorの実行でもない。
 
-現在、ローカルclone/test、実装、1Password credential配置、認証試験、deployment、3site実動作試験は未実施である。
+親が独立全体レビューできるよう設計段階SHAと指摘解消を記録した。Compose/Helmなどhost-specific manifest、実行方式、runtime valuesは対象hostのinventory後に決める。credential/tokenの配置には対象hostごとの安全なhandoff承認が必要で、各APIの認証・Sync状態は配備後に個別確認する。
+
+ローカルclone/test、1Password credential配置、認証試験、deployment、3site実動作試験は未実施である。
