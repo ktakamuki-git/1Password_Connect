@@ -31,18 +31,25 @@ MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribu
 したがってCredentialMCPの登録identityとruntime pair 3組は分け、既存credential/tokenの再利用を設計前提として扱う。既存tokenが各site APIで受理されることは3 siteの認証結果が揃うまで仮説である。追加登録/tokenや権限変更は行わない。実際にcredentialをhostへ置く段階では、対象siteと操作を親へ示し既存の安全なhandoffを使う。[1Password Community: multi-cluster report](https://www.1password.community/developers-69/can-i-run-multiple-kubernetes-operators-under-the-same-secrets-automation-workflow-10315) / [Official Helm deployment template](https://raw.githubusercontent.com/1Password/connect-helm-charts/main/charts/connect/templates/connect-deployment.yaml)
 この根拠は実際のcredential配布を指示するものではない。credential配布が必要な場合は対象siteと操作を親へ示し、既存の安全なhandoffを使う。既存registration/token再利用に追加の登録・token承認gateは設けない。配備後は各APIを個別に認証試験する。
 
-## 2.1 PP2から1Password plugin MCPを呼ぶadapter
+## 2.1 PP2 Hubから1Password plugin MCPへの呼び出し
 
-PP2 adapterは既存1Password plugin MCP接続を通じてMCP toolを呼ぶ。Connect REST APIと同一のAPI/credentialと見なさず、PP2 repo/transport/server identity/tool schemaを確認するまではendpoint、認証方式、実tool名を固定しない。各site用plugin MCP接続が該当site-local Connect APIをbackendとして使うか、実環境でroute/bindingを追跡・確認する。中央または別siteを経由する構成や未確認の経路はsite-local準拠と見なさず、silent bypassやDirect REST fallbackを禁止する。routeが確認できない場合は準拠と報告せず、親に例外/未確認状態を示す。新規の1Password credentialやtokenは生成・設定しない。
+PP2 Hubはこのrepository内のplugin分離moduleをlocalstdio downstreamとして起動し、PP2 coreは変更しない。Hubの既存外部認証とplugin processの既存OS実行identity/permissionsを使い、独自認証、caller approval、role、権限昇格は追加しない。
 
-1. serverのtool metadataを標準MCP `tools/list` で取得し、PP2側の固定allow-listと `inputSchema` に照合する。未知tool、write/delete tool、schema外argumentは拒否する。
-2. allow-list内toolだけをJSON-RPC 2.0 `tools/call` で呼ぶ。requestは `{"jsonrpc":"2.0","id":"<correlation-id>","method":"tools/call","params":{"name":"<allow-listed-tool>","arguments":{}}}` 形式。`id` はcallごとに一意とし、実際のtool名/argumentsは登録plugin metadataとPP2要求から決める。
-3. JSON-RPC protocol `error` と `result.isError=true` を区別し、`content` と任意 `structuredContent` をschemaに従って検証する。transport timeout/切断は別の失敗として返す。tool名/引数を推測してリトライしない。
-4. PP2 callerへ許可範囲の最小結果だけを返す。ログ/auditにはcorrelation id、tool名、status、所要時間などだけを記録し、arguments、result content、item values、Bearer token、credential fileを出さない。secretを返すread toolは呼出し前に人の確認を要求する。
-5. MCP call失敗時にConnect RESTへsilent fallbackしない。既存plugin接続/authの問題は診断結果を返し、credential再発行や設定変更を自動化しない。
+```text
+外部client ──既存認証──> PP2 Hub ──localstdio / 既存OS identity──> このrepoの1Password plugin module ──REST──> 指定site-local Connect API
+```
+
+HubはpluginへMCP `tools/list` を送り、返されたtool metadata/schemaを固定allow-listと `inputSchema` に照合する。未知tool、write/delete tool、schema外argumentは拒否する。許可されたtoolだけをJSON-RPC 2.0 `tools/call` でpluginへ送る。pluginはこの呼び出しを処理し、指定siteのConnect API REST endpointへ接続する。PP2 coreや別のMCP中継層は変更・追加しない。
+
+各siteのplugin backendがそのsite-local Connect APIに結び付くことを実環境で確認する。本人が明示した経路変更は許容し、指定に従って記録・レビューする。指定なしに他siteへ黙って切り替えない。Connect RESTはpluginのbackendであり、Hubがpluginを迂回するfallbackではない。具体的なtool名/schema、transport、backend route、既存認証情報の供給方法は確認後に固定し、推測しない。新規credentialやtokenは生成・設定しない。
+
+1. `tools/list` の結果をallow-listとschemaに照合する。tool名/入力schemaが未確認なら実行しない。
+2. allow-list内のread-only toolだけをJSON-RPC 2.0 `tools/call` で呼ぶ。requestは `{"jsonrpc":"2.0","id":"<correlation-id>","method":"tools/call","params":{"name":"<allow-listed-tool>","arguments":{}}}` 形式。実際のtool名/argumentsは確認済みmetadataとHub要求から決める。
+3. JSON-RPC protocol error、tool error（`result.isError=true`）、transport timeout/切断を別statusとして扱う。成功結果、error、notificationはすべて定義済みの公開metadataへ射影する。`content` と `structuredContent` をそのまま転送せず、secret値、credential file本文、Bearer token、secret-bearing resultをHub/Chatへ返さない。秘密値を返すtoolは作らない。
+4. Hub/Chatには許可範囲の公開metadataだけを返す。監査ログにはcorrelation id、tool名、status、所要時間などを記録し、arguments、raw result、item values、Bearer token、credential fileを出さない。既存Hub認証/OS permissionsの範囲で処理し、新たな人手確認を追加しない。
+5. pluginからConnect RESTへの接続失敗をmetadataで報告し、Hubがpluginを迂回してREST APIを直接呼ぶfallbackは行わない。credentialの再発行や設定変更を自動化しない。
 
 MCP protocolのtool discovery/callとtool result/errorの形式を使用する。[MCP Tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)。PP2本体の対象repositoryと接続実装が未確認のため、この節は実装contractとmock-test要求であり、実接続の証明ではない。
-
 ## 3. コンテナ設定項目
 
 | 要素 | 方針 |
@@ -70,9 +77,9 @@ MCP protocolのtool discovery/callとtool result/errorの形式を使用する�
 
 ## 4.1 CI/Runner境界
 
-site別jobは各専用runner tagに固定し、他site runnerやshared runnerへfallbackしない。deploy jobはsiteごとにmanual/protectedにする。static testにsecret値を必要としない。実配備jobではConnect credential/API tokenの値をGitLabへ渡さず、runner host側の管理済みsecret file pathを参照する。
+site別jobは `appv4`、`main-ubutsu2`、`oyama-wsl` の専用self-hosted runner tagに固定し、他site runnerやshared runnerへfallbackしない。CI jobのtriggerと保護は既存のGitLab設定および本人指示に従い、manual/protected gateを新しい必須条件として追加しない。static testにsecret値を必要としない。実配備jobではConnect credential/API tokenの値をGitLabへ渡さず、runner host側の管理済みsecret file pathを参照する。
 
-GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner `appv4`、`main-ubutsu2`、`oyama-wsl` の3台がonline/activeで登録されているが、全runnerのtag listが空で、このprojectのrunner listは0件。project settingsも `group_runners_enabled=false`、`jobs_enabled=false`、`builds_access_level=disabled`。この設計/実装タスクからこれら設定を変更しない。別担当がaccess/tag/settingsを整えたことを読み取り確認するまでpipelineやrunner jobを実行しない。
+GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner `appv4`、`main-ubutsu2`、`oyama-wsl` の3台がonline/activeで登録されているが、全runnerのtag listが空で、このprojectのrunner listは0件。project settingsも `group_runners_enabled=false`、`jobs_enabled=false`、`builds_access_level=disabled`。site別runner割当と利用可否は、外部担当によるaccess/tag/settingsの準備後に読み取り確認する。この設計/実装タスクから設定を変更せず、実行可能状態が確認され本人指示が許すまでpipelineやrunner jobを実行しない。
 
 ## 5. 接続の確認方法
 
@@ -102,5 +109,5 @@ GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner
 - 認証試験でtokenをCLI引数/ログに出したりVault内容を表示する危険を除き、GET /v1/vaultsの識別情報だけを見る方針へ変更。
 - write権限確認のために本Vaultを変更しない。権限metadataからread-onlyを確認する。
 - Community上の2-cluster同一credentials file実例と公式Helmのreplica設定を区別し、3-site API acceptanceは未実証の設計仮説とした。
-- PP2→plugin MCP adapterに `tools/list` / `tools/call`、schema/allow-list、JSON-RPC errorと `isError`、result redaction/confirmationを定義し、plugin backendがsite-local Connectへ結び付くことの実環境確認とsilent bypass禁止を追加した。
+- PP2 Hubがpluginへlocalstdioで `tools/list` / `tools/call` を送り、pluginが指定site-local Connect REST APIへ接続する方向に統一。PP2 core非変更、既存Hub認証/OS permissions、route changeの明示指示/記録、metadata-only success/error/notification、secret-returning toolと追加human approvalなしを明記した。
 - 3台のsite runnerを指定し、実際のtag/project eligibilityが無効のままであることと外部設定担当の境界を記載した。
