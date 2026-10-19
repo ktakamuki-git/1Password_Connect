@@ -1,15 +1,15 @@
 # 実装検証と計画トレーサビリティ
 
-更新日: 2026-10-18  
+更新日: 2026-10-19  
 検証対象: GitLab project 87779016 / branch codex/1password-connect-design-review  
 実装commit: 7c581762daf031c8e320b61af82bfd47fb336698  
 draft MR: !1  
-最新head/CI: `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` / pipeline `2960553438` (success); 初回実装CI: `1d8a628b7e304d6f064987f6c76de25c716abb37` / pipeline `2960546091` (success)  
+最後に成功したCI: head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` / pipeline `2960553438`; 初回実装CI: `1d8a628b7e304d6f064987f6c76de25c716abb37` / pipeline `2960546091`  
 PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 
 ## 結果の要約
 
-現在のMR head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` のGitLab pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438) は成功し、3 site jobが既存non-shared self-hosted runnerで完了しました。Node/Python/Composeの詳細な実行内訳は実装commit `1d8a628b7e304d6f064987f6c76de25c716abb37` のpipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) に記録されています。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
+文書追記前に最後に成功したGitLab pipelineは [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438)（head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7`）で、3 site jobが既存non-shared self-hosted runnerで完了しました。文書commit後に自動生成されたpipeline 2961990853はCI停止指示に従ってcancelを要求しました。Node/Python/Composeの詳細な実行内訳は実装commit `1d8a628b7e304d6f064987f6c76de25c716abb37` のpipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) に記録されています。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
 
 唯一のskipはPP2 Hub sourceを必要とするloopback integration testです。固定PP2 source commitは `f4871b58624d975be9737d1327390b4ebdb311fc`。PP2 project 87779895はprivateで、read-only確認ではinbound CI job token allowlistが有効、許可対象は同project自身のみでした。Connect project 87779016からのcloneを試したり、Job Token scopeを拡張したり、別credentialを作成していません。GitLab公式仕様ではprivate project repositoryをCI jobからcloneするにはjob tokenの対象project allowlistと実行ユーザーのアクセス権が必要です（[CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/)）。このintegrationをCIで実行する最低条件は、PP2 project側でConnect project 87779016のjob tokenによるrepository readを許可し、pipeline実行ユーザーにもread権限があることです。write/push権限は不要です。現在のCIは `PP2_HUB_ROOT` を設定せず、該当testをskipする構成を維持しています。
 
@@ -63,7 +63,7 @@ ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情
 
 ## Environment and CI status
 
-- Latest MR head and CI commit: `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7`; pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438) succeeded. Detailed source validation is in pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) for implementation/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37`.
+- Last completed successful CI before documentation-only updates: head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7`, pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438). Detailed source validation is in pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) for implementation/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37`.
 - `site-appv4`, `site-ubutsu2`, and `site-oyama-wsl` all succeeded on the existing non-shared self-hosted runners. The job tag for MainUbutsu2 is `ubutsu2`; `main-ubutsu2` is the Runner description.
 - Node.js v24.22.0 checks passed on all sites: `npm run check`; `npm test` reports 25 total, 24 pass, 0 fail, 1 skipped. The skip is the PP2 Hub source integration only.
 - Python suite reports 14/14 on all sites. Official Docker Compose standalone v5.6.0 checksum and binary verification passed; `docker-compose -f deploy/docker/compose.yaml config` exited successfully. No daemon or service was started.
