@@ -17,7 +17,7 @@
 | ID | 検査 | 合格条件 |
 |---|---|---|
 | ST-01 | JSON profile/schemaとCompose YAMLのparse | 3つの設定ファイルがparseでき、profileがschemaに適合する |
-| ST-02 | Container version一致 | 公式API/Sync imageが同じ固定release tag 1.8.3を使い、latestを使わない |
+| ST-02 | Container release/digest | Official API/Sync images use the same release 1.8.3 and the recorded official GHCR multi-arch image-index digests; latest tag absent |
 | ST-03 | Volume mapping | 同一siteのAPI/Syncが同じencrypted data pathをmountし、他siteを参照しない |
 | ST-04 | Secret hygiene | credentials/token/private key実値、Base64実値、output fixtureがGit diff/tracked file/logにない |
 | ST-05 | API exposure | API bind/listenerがsite/host local onlyまたはprivate allow-list。public unauthenticated exposureなし |
@@ -28,11 +28,12 @@
 | ST-10 | Operational docs | install, health, update, rollback, stop/secret handoff条件が全siteに適用可能 |
 | ST-11 | Optional rootless health observer | `monitoring` profileで任意起動、UID 65532、read-only、cap_drop ALL、no-new-privileges。`TOKEN_NEEDED` は初回auth GET前のnot-readyを表し、observer unhealthyだけでstartup failureと判定しない |
 | ST-12 | Compose secret source | credentials file sourceは必須の未設定環境変数参照、API/Syncへread-only fileで渡す。token実値やtoken環境変数はComposeに置かない |
-| ST-13 | Localhost/API exposure | APIのみ127.0.0.1:8080へbind。Sync/bus/health monitorのhost port mappingなし |
+| ST-13 | Localhost/API exposure | Host port defaults to 8080, accepts validated decimal override 1–65535, rejects malformed/out-of-range values, and remains bound only to 127.0.0.1. Container API and internal health URL stay on 8080; Sync/bus/monitor have no host ports |
 | ST-14 | Manual bus | API/Sync peersはsite Compose network上の相手serviceだけを指し、NET_BROADCAST capabilityを要求しない |
 | ST-15 | Hub-to-plugin MCP contract | Hub相当clientが本repoのlocal stdio pluginへ `tools/list` / `tools/call` を送り、pluginだけがmock Connect RESTへ接続する。PP2 core変更や追加中継層なし |
 | ST-16 | MCP output secret hygiene | success/protocol error/tool error/notificationのHub向け出力とlog/audit/artifactは定義済み公開metadataのみ。raw `content`/`structuredContent`、secret、credential本文、tokenを漏らさず、secret-returning toolなし |
 | ST-17 | CI configuration alignment | job trigger/protectionは既存GitLab設定と本人指示に整合し、新たなmanual/protected必須gateを追加しない。site jobは対応するself-hosted runner tagへ固定し、shared/他site fallbackなし。設定が未準備なら利用不可として記録 |
+| ST-18 | Docker Engine/network namespace | Identify actual Docker context/daemon per site. Distinguish Docker Desktop's own WSL Engine from a distro-installed Engine; verify host Hub/plugin loopback route and Engine >=28 caveat without starting deployment |
 
 文書追記前に最後に成功したMR head pipeline 2960553438は3 site runner jobすべて成功した。実装/CI pipeline 2960546091ではNode tests 24 pass/0 fail/1 skip、Python tests 14/14、Compose config成功を確認し、skipはprivate PP2 sourceへのCI read access不足による。別に、task workspace内のexact-source snapshotでNode checkと25/25 tests（skipなし）を実行し、Hub integrationのlocal mock経路を確認した。ST-09 routingは `appv4` / `ubutsu2` / `oyama-wsl` tagで確認。ST-07の実Vault scope metadataとendpoint/resource/volume、ST-08の実host identityは未検証。証拠区分とCI access条件はdocs/implementation-validation.mdに記録する。
 
@@ -51,6 +52,8 @@ test harnessはHub相当のMCP clientとして本repository内のplugin module�
 | MCP-07 | Site route change | pluginのREST requestは指定site routeに届く。本人が明示したroute変更はその指定先を使い記録する。指定なしの他siteへの切替は行わない |
 | MCP-08 | No Hub bypass | pluginからConnect RESTへの通常backend通信は許可する。MCP/plugin失敗時にHub相当clientがpluginを迂回してRESTを直接呼ぶfallbackはしない |
 
+Current implementation scope: `connect_list_vaults` makes only authenticated `GET /v1/vaults` and returns Vault ID/status metadata. It does not read item/field values or provide consumer-internal secret delivery; passing these tests does not establish removal of an existing app-side secret retrieval dependency. Any future dependency-removal work needs separate requirements for authorized consumer identity/delivery, rotation, failure behavior, redaction/audit, and integration tests; do not add secret values to Hub/Chat MCP responses.
+
 これらはmock MCP/stdio clientとmock Connect REST serverで実行し、live credentialやVault dataは使わない。実際のplugin tool schema/transportはPP2 Hubとの接続実装を確認した後にcontract fixtureへ固定する。
 ## 3. 配備 smoke test cases
 
@@ -64,10 +67,15 @@ test harnessはHub相当のMCP clientとして本repository内のplugin module�
 | DP-04 | Vault identity | readiness後の認証GETでVault ID/nameだけを許可済み値と比較。item contentsを取らない |
 | DP-05 | App cutover | readiness・Vault identity確認後、site-localアプリがsite-local API endpointを指す |
 | DP-06 | Read-only boundary | 1Password側scope metadataでread-only確認。実Vaultへwrite/deleteを送って試験しない |
-| DP-07 | Exposure | 外部経路から接続不能かつsite内の許可app hostからだけ到達 |
+| DP-07 | Exposure and Engine | Confirm chosen Docker Engine/context, external reachability, and approved app route. Loopback publish remains host-only; Engine <28.0.0 has documented same-L2 caveat and requires explicit network review |
 | DP-08 | Cache isolation | 各site固有のdata volumeで稼働。他site volume mountまたは共有NFSがない |
-| DP-09 | Evidence | host識別子、時間、image version、heartbeat/health/auth result、Vault identifierだけ記録 |
+| DP-09 | Evidence | Host identity, time, image version/digest, heartbeat/health/auth result, Vault identifier, resource snapshots (API/Sync/Hub/plugin CPU/RAM, image/volume/log/host disk, and WSL virtual-disk delta when relevant) |
 | DP-10 | Hub/plugin route | Hub相当clientから本repoのlocal stdio pluginを通じ、Connect REST backendが指定site-local APIに到達することを確認。本人の明示route変更は許容して記録し、指定なしの他site切替やHubのplugin迂回をpassにしない |
+
+
+## 5. Post-deployment resource observations (non-gating)
+
+Capture a host/daemon baseline before image pulls, then observe after pull, after startup, after first sync, and under representative normal workload. Record the two Connect containers separately plus the host PP2 Hub and plugin child CPU/RAM; record compressed transfer size versus local image storage, named volume/cache size, container log growth, host free disk, and WSL virtual-disk delta where applicable. Keep observations and timestamps for comparison; do not invent a universal RAM/disk pass threshold or treat these measurements as an approval gate.
 
 Compose observerは任意の `monitoring` profileで起動し、Connect本体の起動をgateしない。DP-03の前にunhealthyを示しても、それだけを初回起動失敗としない。DP-06はscope metadataから判定し、read-onlyを試すためにVaultを壊さない。
 

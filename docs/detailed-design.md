@@ -10,18 +10,18 @@
 | MainUbutsu2 | 未確定。正式remote/host確認後に設定 | 1 | 1 | MainUbutsu2内のみ | MainUbutsu2上のアプリ |
 | MiniPC-Oyama (WSL) | 未確定。WSL distro/runtime/host network確認後に設定 | 1 | 1 | MiniPC-Oyama WSL内のみ | MiniPC-Oyama上のアプリ |
 
-MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribution名、自動起動、コンテナ実行方式は未確認。APPv4/MainUbutsu2を含め、volume driver、host名/IP、TLS終端も確定していないため固定しない。Docker Compose/Kubernetesのmanifestは各環境の棚卸し後に選ぶ。
+MiniPC-OyamaがWSLであることはユーザー報告で確認済み。distribution名、自動起動、container実行方式は未確認。Docker Desktopの専用 `docker-desktop` distro/Engineと、target WSL distro内に別installされたDocker Engineを区別する。siteごとにactive Docker context/daemonを特定し、別daemonのimage/volume/portを取り違えたり、両方を同じhost portで起動したりしない。APPv4/MainUbutsu2を含め、volume driver、host名/IP、TLS終端も確定していないため固定しない。Docker Compose/Kubernetesのmanifestは各環境の棚卸し後に選ぶ。
 
 ## 1.1 Docker Compose候補
 
-`deploy/docker/compose.yaml` はAPPv4/MainUbutsu2/MiniPC-Oyamaのいずれか一拠点に使う共通候補であり、実hostには未適用。公式 `1password/connect-api:1.8.3` と `1password/connect-sync:1.8.3` を同一networkで動かし、両方がCompose project-scoped `connect-data` named volumeを共有する。credential fileは必須の外部file path参照をread-only secret mountし、secret値やAPI tokenはファイルに含めない。APIのみ `127.0.0.1:8080` に公開し、sync/bus portはinternal networkだけにする。API/Sync busは公式manual configurationでservice peerを指定する。
+`deploy/docker/compose.yaml` はAPPv4/MainUbutsu2/MiniPC-Oyamaのいずれか一拠点に使う共通候補であり、実hostには未適用。Connect API/Sync 1.8.3を同一networkで動かし、両方がCompose project-scoped `connect-data` named volumeを共有する。imageは公式GHCRのmulti-arch image index digestで固定（API `sha256:a0cefa9fb93999b1ca67325ec3a79b38f3d3803a0790a6ec6630d4657896a54f`、Sync `sha256:5b6dcfa57e86f44b4d8a766b0edbf0321c519a9b6d327ed0a79d8583b6c7bfb5`）。credential fileは必須の外部file path参照をread-only secret mountし、secret値やAPI tokenはファイルに含めない。API containerは8080でlistenし、host portは `CONNECT_API_HOST_PORT` で選択する（未指定時8080、1–65535をwrapperが検証）。bind addressは `127.0.0.1` 固定で、sync/bus portはinternal networkだけにする。API/Sync bus peersは同じsite network上で相互に相手service名/11223を指す。
 
-公式Connect API image内にroot health commandがあると仮定しない。`connect-healthcheck` は別のPython containerでAPI `GET /health` を読み、`sync` と `sqlite` が`ACTIVE`の時だけhealthyにする。probeはUID 65532で動かし、read-only filesystem、全capabilities drop、no-new-privilegesを設定する。observerは `monitoring` Compose profileで任意起動し、Connect API/Syncの起動や相互接続を制御しない。各siteでobserverを有効にした場合は6つのConnect本体に最大3つのobserverが加わる。初回起動時、API `/health` がHTTP 200でも `sync: TOKEN_NEEDED` と `sqlite: ACTIVE` を返すことがある。これは初回の認証GETで1Password同期を開始する前の待機状態であり、起動失敗ではない。observerは `TOKEN_NEEDED` 中はunhealthyを示すが、それ単独で起動失敗と判断しない。実際のCompose/host互換性、localhost route、secret file読取permissionは各siteのruntime確認後に静的/実動作検証する。
+公式Connect API image内にroot health commandがあると仮定しない。 `connect-healthcheck` は別のPython containerでAPI `GET /health` を読み、`sync` と `sqlite` が`ACTIVE`の時だけhealthyにする。probeはUID 65532で動かし、read-only filesystem、全capabilities drop、no-new-privilegesを設定する。observerは `monitoring` Compose profileで任意起動し、Connect API/Syncの起動や相互接続を制御しない。各siteでobserverを有効にした場合は6つのConnect本体に最大3つのobserverが加わる。初回起動時、API `/health` がHTTP 200でも `sync: TOKEN_NEEDED` と `sqlite: ACTIVE` を返すことがある。これは初回の認証GETで1Password同期を開始する前の待機状態であり、起動失敗ではない。observerは `TOKEN_NEEDED` 中はunhealthyを示すが、それ単独で起動失敗と判断しない。実際のCompose/host互換性、localhost route、secret file読取permissionは各siteのruntime確認後に静的/実動作検証する。Hub sourceはhost Node processがlocalstdio pluginをchildとして起動する構成を示すため、Compose loopbackへのrouteをhost namespace前提で設計する。実配備のHubがcontainer/別namespaceなら `127.0.0.1` が指す先を再確認する。Docker Engineが28.0.0未満の場合、localhost published portが同一L2 segmentから到達され得るという公式注意も確認する。
 
 ## 2. 認証とVault境界
 
 - 1Password account側に既存Connect登録 CredentialMCPが1つある前提とする。Connect serverを作り直したり、tokenを追加発行しない。
-- 1password-credentials.jsonはConnect Sync/API containerが1Password Connect identityとして動作するためのsecret。各hostへ安全に届ける必要がある。値はGit/ログ/チャットに載せない。
+- 1password-credentials.jsonはConnect Sync/API containerが1Password Connect identityとして動作するためのsecret。Connect自身がまだ起動するために必要な初期credentials fileを同一Connectから取得することはできない。初期fileは別の安全なhandoffで先にhostへ届ける。Connect起動/認証後は他のconsumer secretを取得できるが、bootstrap credentialやそのtokenの循環取得は行わない。値はGit/ログ/チャットに載せない。
 - アプリがConnect APIを呼ぶ際には既存access tokenをBearer tokenとして使う。アプリのruntime secret storeから読み、source codeやtracked .envには置かない。
 - Connect tokenが対象Vaultの読み取りのみを許すことを、値を表示せずアカウント側の権限情報で確認する。読み取り専用でない場合は既存credentialを変更せず、親に権限変更の必要性を報告する。
 - ChromeVaultなどitem名/内容をAPI応答やtest logに記録しない。受け入れ記録は成功/失敗と応答statusだけにする。
@@ -41,7 +41,7 @@ PP2 Hubはこのrepository内のplugin分離moduleをlocalstdio downstreamとし
 
 HubはpluginへMCP `tools/list` を送り、返されたtool metadata/schemaを固定allow-listと `inputSchema` に照合する。未知tool、write/delete tool、schema外argumentは拒否する。許可されたtoolだけをJSON-RPC 2.0 `tools/call` でpluginへ送る。pluginはこの呼び出しを処理し、指定siteのConnect API REST endpointへ接続する。PP2 coreや別のMCP中継層は変更・追加しない。
 
-各siteのplugin backendがそのsite-local Connect APIに結び付くことを実環境で確認する。本人が明示した経路変更は許容し、指定に従って記録・レビューする。指定なしに他siteへ黙って切り替えない。Connect RESTはpluginのbackendであり、Hubがpluginを迂回するfallbackではない。具体的なtool名/schema、transport、backend route、既存認証情報の供給方法は確認後に固定し、推測しない。新規credentialやtokenは生成・設定しない。
+各siteのplugin backendがそのsite-local Connect APIに結び付くことを実環境で確認する。本人が明示した経路変更は許容し、指定に従って記録・レビューする。指定なしに他siteへ黙って切り替えない。Connect RESTはpluginのbackendであり、Hubがpluginを迂回するfallbackではない。現在の `connect_list_vaults` 実装は認証付き `GET /v1/vaults` のVault ID/status metadataしか扱わず、item detail/secret value readやconsumer deliveryを行わない。従って現段階のpluginはVault discoveryを提供するだけで、既存app/consumerが持つsecret取得経路への依存を解消したとは言えない。依存解消には、Chat/MCP responseを経由しないauthorized consumer内delivery route、caller/consumer identityと認可元、Vault/item/field参照、refresh/rotation、障害時/失効時動作、監査・redaction・mock/live-boundary testsを別途定義する必要がある。現要件に無いsecret-returning toolを追加しない。具体的なtool/schemaとbackend routeは確認後に固定する。新規credentialやtokenは生成・設定しない。
 
 1. `tools/list` の結果をallow-listとschemaに照合する。tool名/入力schemaが未確認なら実行しない。
 2. allow-list内のread-only toolだけをJSON-RPC 2.0 `tools/call` で呼ぶ。requestは `{"jsonrpc":"2.0","id":"<correlation-id>","method":"tools/call","params":{"name":"<allow-listed-tool>","arguments":{}}}` 形式。実際のtool名/argumentsは確認済みmetadataとHub要求から決める。
@@ -62,13 +62,13 @@ MCP protocolのtool discovery/callとtool result/errorの形式を使用する�
 | API endpoint | APIのみアプリに公開。HTTP default 8080、TLS時のHTTPS default 8443。APIのhealth endpointは /health と /heartbeat。 |
 | Sync endpoint | health portは選択したdeployment設定に従う。汎用Connect containerのOP_HTTP_PORT defaultは8080、公式Helm chartはSyncのHTTP portを8081に設定。拠点内監視だけに使い、アプリへ公開しない。 |
 | Container bus | API/Sync間の内部busだけを許可。public/host networkに露出しない。 |
-| Resource limits | 実VM/hostの空きRAM/CPUを確認後に指定。APPv4の申告RAM値を3拠点共通のlimitと仮定しない。 |
+| Resource limits | 実VM/hostの空きRAM/CPUを確認後に指定。APPv4の申告RAM値を3拠点共通のlimitと仮定しない。起動前baseline、image pull後、初回sync後、平常workload時にAPI/Sync別、Hub/plugin別CPU/RAM、image/volume/log/host disk usageを観測し、WSLならvirtual disk deltaも記録する。値は比較用であり新しいpass/fail thresholdではない。 |
 
 画像・環境変数・volumeとhealth情報は公式Configure/Helm chartを基準にする。[Connect server configuration](https://www.1password.dev/connect/server-configuration) / [Official Helm chart values](https://github.com/1Password/connect-helm-charts/blob/main/charts/connect/values.yaml)
 
 ## 4. ネットワーク/保護
 
-1. APIのbind addressは当初loopbackまたはサイト内private networkのみにする。
+1. Compose候補はAPI container port 8080のhost publishを `127.0.0.1:${CONNECT_API_HOST_PORT:-8080}:8080` とする。wrapperがhost port 1–65535を検証し、container内8080は固定。Docker Engine 28.0.0未満では同一L2 segmentからlocalhost-published portへ到達できる場合があるため、Engine versionを事前に読む。
 2. サイト内でAPIへ到達するアプリ/hostをallow-list化する。外部向けport-forward、public DNS、public load balancerは設定しない。
 3. 接続がtrusted network boundaryを越える場合はTLSを使う。証明書とTLS termination方式は実ネットワークの確認後に選ぶ。
 4. 外向きSync接続は各siteのegress/proxy/FWを調査してから許可する。接続先を推定してFWルールを作らない。
@@ -90,7 +90,7 @@ GitLab inventory snapshot (2026-10-18): plugin subgroupに非shared group runner
 3. API `GET /health` の `sync` と `sqlite` がともに `ACTIVE` になるまで待つ。初回認証GET前の `sync: TOKEN_NEEDED` とobserverのunhealthyは想定内のpending状態であり、それ単独では起動失敗を意味しない。認証GET後もinactiveのまま、heartbeat失敗、または認証要求失敗の場合はアプリを切り替えずsecretを表示しない手順で調査する。[Get server health](https://www.1password.dev/connect/api-reference/get-server-health)
 4. ACTIVE確認後に `GET /v1/vaults` のVault識別情報だけを許可済み値と比較し、item contentsを取得・表示しない。
 5. healthとVault identityが確認できた後に限り、site-localアプリをlocal APIへ切り替える。scope metadataでread-onlyを確認し、実Vaultへのwrite/deleteを試験しない。
-6. 結果をhost名、image version、heartbeat/health/auth結果、Vault ID一致、時刻だけで記録する。
+6. 結果をhost名、image version/digest、heartbeat/health/auth結果、Vault ID一致、時刻だけで記録する。CPU/RAM/diskのresource observationsは上記のタイミングで併記するが、合否gateにはしない。
 
 ## 6. 初期同期、障害、rollback
 
