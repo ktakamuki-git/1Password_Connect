@@ -88,3 +88,11 @@ ST-01..ST-17はこの過去時点のCI/static記録です。最新の検証結�
 - 実装計画: 67c25a51765be9c7e40199d0175bbf8c08a50fe2
 - テスト設計: 2f118988c66500b643faa5fb8f0b5e3402e22fb1
 
+
+## Oyama read-only runtime diagnostic (2026-10-19)
+
+- Diagnostic commit: `dae76d66cb767cd18cca0f8727539adcbe540b42`; health-probe continuation fix: `fc9da5be8be24be951fa50e77ed77c0d93f350e1`. Pipeline [2963127427](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2963127427) was API-triggered for the existing branch and contained exactly one job, `oyama-runtime-diagnostics`, on the existing `oyama-wsl` runner (runner ID 57553761). The push pipeline was suppressed; no other-site job ran.
+- The job passed `bash -n` and reported host `MiniPC-oyama`, WSL2 kernel, WSL systemd enabled, Docker unit active/enabled, and GitLab Runner unit active/enabled. Windows-side WSL auto-start is not visible from the guest and remains unverified.
+- A read-only unauthenticated `GET /health` returned HTTP 200 and Connect version 1.8.3. `sync`, `sqlite`, and `1Password` reported `ACTIVE`; `account_data` was normalized to `OTHER` by the output allowlist. The diagnostic readiness check uses the required `sync` and `sqlite` states and reported ready.
+- Docker CLI access was denied for runner UID 999/GID 986. The job deliberately made no group or sudoers changes. Docker daemon metadata, Compose container state, actual restart policy/count, port binding, and Connect data-volume mount therefore remain unverified; the Compose file's `unless-stopped` is only the repository candidate, not runtime evidence. The job exited failed to preserve this permission finding.
+- The job did not read credentials, call authenticated endpoints, expose service ports, or restart/change services or networking. It emitted only allowlisted diagnostic fields.
