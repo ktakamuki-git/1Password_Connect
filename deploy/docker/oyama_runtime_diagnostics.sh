@@ -115,58 +115,80 @@ if [ "$docker_available" -eq 1 ]; then
   printf 'DOCKER_CONTAINERS_RUNNING=%s\n' "$(clean_field "$running_count")"
   printf 'DOCKER_ROOT_DIR=%s\n' "$(clean_field "$docker_root")"
 
-inspect_format='{{.Id}}|{{.Name}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.HostConfig.RestartPolicy.Name}}|{{.RestartCount}}|{{if index .Config.Labels "com.docker.compose.service"}}{{index .Config.Labels "com.docker.compose.service"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project"}}{{index .Config.Labels "com.docker.compose.project"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project.working_dir"}}{{index .Config.Labels "com.docker.compose.project.working_dir"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project.config_files"}}{{index .Config.Labels "com.docker.compose.project.config_files"}}{{else}}none{{end}}|{{with index .NetworkSettings.Ports "8080/tcp"}}{{range .}}{{.HostIp}}:{{.HostPort}},{{end}}{{else}}none{{end}}|{{range .Mounts}}{{if eq .Destination "/home/opuser/.op/data"}}{{.Type}};{{.Name}};{{.Destination}};{{.RW}};{{.Source}}{{end}}{{end}}'
+inspect_format='{{.Name}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.HostConfig.RestartPolicy.Name}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{with index .NetworkSettings.Ports "8080/tcp"}}{{range .}}{{.HostIp}}:{{.HostPort}},{{end}}{{else}}none{{end}}|{{range .Mounts}}{{if eq .Destination "/home/opuser/.op/data"}}{{.Type}};{{.Name}};{{.Destination}};{{.RW}};{{.Source}}{{end}}{{end}}'
 container_count=0
 for service in connect-api connect-sync; do
+  case "$service" in
+    connect-api) expected_container='opconnect-oyama-connect-api-1' ;;
+    connect-sync) expected_container='opconnect-oyama-connect-sync-1' ;;
+    *) printf 'COMPOSE_SERVICE_MAPPING=unsupported\n'; diagnostic_failed=1; continue ;;
+  esac
   printf 'COMPOSE_SERVICE_QUERY=%s\n' "$service"
-  if ! ids="$(docker ps --all --quiet --filter "label=com.docker.compose.service=$service" 2>/dev/null)"; then
+  printf 'COMPOSE_CONTAINER_NAME_EXPECTED=%s\n' "$expected_container"
+  if ! container_names="$(docker ps --all --format '{{.Names}}' --filter "label=com.docker.compose.service=$service" 2>"$tmpdir/docker-ps.err")"; then
     printf 'DOCKER_CONTAINER_LIST=unavailable\n'
     diagnostic_failed=1
     continue
   fi
-  if [ -z "$ids" ]; then
-    printf 'COMPOSE_SERVICE_%s=not_found\n' "$service"
+  name_count="$(printf '%s\n' "$container_names" | awk 'NF { count++ } END { print count + 0 }')"
+  if [ "$name_count" -ne 1 ] || ! printf '%s\n' "$container_names" | grep -Fxq "$expected_container"; then
+    if [ "$name_count" -eq 0 ]; then
+      printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=not_found\n'
+    else
+      printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=mismatch_or_ambiguous\n'
+    fi
     diagnostic_failed=1
     continue
   fi
-  while IFS= read -r container_id; do
-    [ -n "$container_id" ] || continue
-    if ! row="$(docker inspect --format "$inspect_format" "$container_id" 2>/dev/null)"; then
-      printf 'COMPOSE_CONTAINER_INSPECT=unavailable\n'
-      diagnostic_failed=1
-      continue
-    fi
-    IFS='|' read -r cid name image state health restart_policy restart_count compose_service compose_project working_dir config_files api_bindings data_mount <<<"$row"
-    container_count=$((container_count + 1))
-    printf 'COMPOSE_CONTAINER_ID=%s\n' "$(clean_field "$cid")"
-    printf 'COMPOSE_CONTAINER_NAME=%s\n' "$(clean_field "$name")"
-    printf 'COMPOSE_CONTAINER_IMAGE=%s\n' "$(clean_field "$image")"
-    printf 'COMPOSE_SERVICE=%s\n' "$(clean_field "$compose_service")"
-    printf 'COMPOSE_PROJECT=%s\n' "$(clean_field "$compose_project")"
-    printf 'COMPOSE_WORKING_DIR=%s\n' "$(clean_field "$working_dir")"
-    printf 'COMPOSE_CONFIG_FILES=%s\n' "$(clean_field "$config_files")"
-    printf 'COMPOSE_STATE=%s\n' "$(clean_field "$state")"
-    printf 'COMPOSE_HEALTH=%s\n' "$(clean_field "$health")"
-    printf 'COMPOSE_RESTART_POLICY=%s\n' "$(clean_field "$restart_policy")"
-    printf 'COMPOSE_RESTART_COUNT=%s\n' "$(clean_field "$restart_count")"
-    printf 'COMPOSE_API_8080_BINDINGS=%s\n' "$(clean_field "$api_bindings")"
-    if [ -z "$data_mount" ]; then
-      printf 'CONNECT_DATA_MOUNT=not_found\n'
+  printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=matched\n'
+  if ! row="$(docker inspect --type container --format "$inspect_format" "$expected_container" 2>"$tmpdir/docker-inspect.err")"; then
+    if grep -Eiq 'permission denied|access denied|operation not permitted' "$tmpdir/docker-inspect.err"; then
+      inspect_reason=permission_denied
+    elif grep -Eiq 'no such (object|container)|not found' "$tmpdir/docker-inspect.err"; then
+      inspect_reason=not_found
+    elif grep -Eiq 'template parsing error|error parsing template|template:' "$tmpdir/docker-inspect.err"; then
+      inspect_reason=format_error
     else
-      IFS=';' read -r mount_type mount_name mount_destination mount_rw mount_source <<<"$data_mount"
-      case "$mount_source" in
-        /mnt/*|//*|[A-Za-z]:/*) mount_source_kind=windows_mount ;;
-        /home/*) mount_source_kind=linux_home ;;
-        /var/lib/docker/*|/var/snap/docker/*) mount_source_kind=linux_docker_data ;;
-        *) mount_source_kind=other ;;
-      esac
-      printf 'CONNECT_DATA_MOUNT_TYPE=%s\n' "$(clean_field "$mount_type")"
-      printf 'CONNECT_DATA_MOUNT_NAME=%s\n' "$(clean_field "$mount_name")"
-      printf 'CONNECT_DATA_MOUNT_DESTINATION=%s\n' "$(clean_field "$mount_destination")"
-      printf 'CONNECT_DATA_MOUNT_RW=%s\n' "$(clean_field "$mount_rw")"
-      printf 'CONNECT_DATA_MOUNT_SOURCE_KIND=%s\n' "$mount_source_kind"
+      inspect_reason=other_error
     fi
-  done <<<"$ids"
+    printf 'COMPOSE_CONTAINER_INSPECT=%s\n' "$inspect_reason"
+    diagnostic_failed=1
+    continue
+  fi
+  IFS='|' read -r name image state health restart_policy restart_count compose_service compose_project api_bindings data_mount <<<"$row"
+  inspected_name="${name#/}"
+  if [ "$inspected_name" != "$expected_container" ] || [ "$compose_service" != "$service" ]; then
+    printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=inspect_metadata_mismatch\n'
+    diagnostic_failed=1
+    continue
+  fi
+  container_count=$((container_count + 1))
+  printf 'COMPOSE_CONTAINER_INSPECT=available\n'
+  printf 'COMPOSE_CONTAINER_NAME=%s\n' "$(clean_field "$inspected_name")"
+  printf 'COMPOSE_CONTAINER_IMAGE=%s\n' "$(clean_field "$image")"
+  printf 'COMPOSE_SERVICE=%s\n' "$(clean_field "$compose_service")"
+  printf 'COMPOSE_PROJECT=%s\n' "$(clean_field "$compose_project")"
+  printf 'COMPOSE_STATE=%s\n' "$(clean_field "$state")"
+  printf 'COMPOSE_HEALTH=%s\n' "$(clean_field "$health")"
+  printf 'COMPOSE_RESTART_POLICY=%s\n' "$(clean_field "$restart_policy")"
+  printf 'COMPOSE_RESTART_COUNT=%s\n' "$(clean_field "$restart_count")"
+  printf 'COMPOSE_API_8080_BINDINGS=%s\n' "$(clean_field "$api_bindings")"
+  if [ -z "$data_mount" ]; then
+    printf 'CONNECT_DATA_MOUNT=not_found\n'
+  else
+    IFS=';' read -r mount_type mount_name mount_destination mount_rw mount_source <<<"$data_mount"
+    case "$mount_source" in
+      /mnt/*|//*|[A-Za-z]:/*) mount_source_kind=windows_mount ;;
+      /home/*) mount_source_kind=linux_home ;;
+      /var/lib/docker/*|/var/snap/docker/*) mount_source_kind=linux_docker_data ;;
+      *) mount_source_kind=other ;;
+    esac
+    printf 'CONNECT_DATA_MOUNT_TYPE=%s\n' "$(clean_field "$mount_type")"
+    printf 'CONNECT_DATA_MOUNT_NAME=%s\n' "$(clean_field "$mount_name")"
+    printf 'CONNECT_DATA_MOUNT_DESTINATION=%s\n' "$(clean_field "$mount_destination")"
+    printf 'CONNECT_DATA_MOUNT_RW=%s\n' "$(clean_field "$mount_rw")"
+    printf 'CONNECT_DATA_MOUNT_SOURCE_KIND=%s\n' "$mount_source_kind"
+  fi
 done
 if [ "$container_count" -eq 0 ]; then
   printf 'CONNECT_COMPOSE_CONTAINERS=none\n'
