@@ -4,16 +4,16 @@
 検証対象: GitLab project 87779016 / branch codex/1password-connect-design-review  
 実装commit: 7c581762daf031c8e320b61af82bfd47fb336698  
 draft MR: !1  
-CI証跡: source/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37` / pipeline `2960546091` (success)  
+最新head/CI: `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` / pipeline `2960553438` (success); 初回実装CI: `1d8a628b7e304d6f064987f6c76de25c716abb37` / pipeline `2960546091` (success)  
 PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 
 ## 結果の要約
 
-最新の静的/unit CI（2026-10-18）はGitLab pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091)、source/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37` で成功しました。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
+現在のMR head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` のGitLab pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438) は成功し、3 site jobが既存non-shared self-hosted runnerで完了しました。Node/Python/Composeの詳細な実行内訳は実装commit `1d8a628b7e304d6f064987f6c76de25c716abb37` のpipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) に記録されています。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
 
 唯一のskipはPP2 Hub sourceを必要とするloopback integration testです。固定PP2 source commitは `f4871b58624d975be9737d1327390b4ebdb311fc`。PP2 project 87779895はprivateで、read-only確認ではinbound CI job token allowlistが有効、許可対象は同project自身のみでした。Connect project 87779016からのcloneを試したり、Job Token scopeを拡張したり、別credentialを作成していません。GitLab公式仕様ではprivate project repositoryをCI jobからcloneするにはjob tokenの対象project allowlistと実行ユーザーのアクセス権が必要です（[CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/)）。このintegrationをCIで実行する最低条件は、PP2 project側でConnect project 87779016のjob tokenによるrepository readを許可し、pipeline実行ユーザーにもread権限があることです。write/push権限は不要です。現在のCIは `PP2_HUB_ROOT` を設定せず、該当testをskipする構成を維持しています。
 
-このCI結果はhost-independentなmock/static試験です。Connectの実credential/token取得、実API認証、deployment、3拠点実runtime動作は行っていません。前段のWindows scratch workspaceによるテストと、正式Ubutsu2 local cloneでの検証も区別します。
+このCI結果はhost-independentなmock/static試験です。Connectの実credential/token取得、実API認証、deployment、3拠点実runtime動作は行っていません。Windowsの本task workspaceで行った、PP2固定sourceを使うローカルmock integration（下記）はCIとは別の証拠であり、正式Ubutsu2 local cloneでの検証とも区別します。
 
 ## MCP test traceability
 
@@ -24,7 +24,7 @@ PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 | MCP-03 Allow-list/schema | protocol-boundary.test.js がpluginへunknown/write/delete名を直接送り、tool名、argument key/valueのcanary非反射、REST未接続を確認。null/string/array envelopeも安全なprotocol error | mockで確認 |
 | MCP-04 Success/error/notification | success、401 tool error、malformed envelope/protocol errorを検査し、通常実行で通知が発行されないことを検査 | success/errorは確認。通知入力/出力の個別ケースは未確認 |
 | MCP-05 Secret-safe projection/audit | mock vault name/item/password、HTTP error body、引数canaryがcaller response/stdout/stderrに出ないこと、structuredContentなし、auditは固定tool/status/correlationId/durationMs/eventだけを検査 | mockで確認 |
-| MCP-06 Existing Hub boundary | `PP2_HUB_ROOT` を指定した場合にGitLab PP2 Hubのconfig、downstream registry、HTTP serverをimportするloopback integration test。合成tokenとtest-only authenticatorを使用 | Windows scratchのPP2 source snapshotでは過去に実行。最新CIではPP2 private sourceへの既存read permissionがなく1件skip。既存認証/OS identityの配備検証は未実施 |
+| MCP-06 Existing Hub boundary | `PP2_HUB_ROOT` を指定した場合にGitLab PP2 Hubのconfig、downstream registry、HTTP serverをimportするloopback integration test。合成tokenとtest-only authenticatorを使用 | 2026-10-19にPP2固定source全5 moduleの一致を検証した新規task-workspace snapshotで25/25 local pass。最新CIではPP2 private sourceへの既存read permissionがなく1件skip。既存認証/OS identityの配備検証は未実施 |
 | MCP-07 Site route | unit testで固定route、明示site指定、redirect拒否を検査。appv4/main-ubutsu2はmockで扱う | mockで一部確認。oyama-wslと3拠点実routeは未確認 |
 | MCP-08 No bypass | Hub integrationの成功経路ではHubがplugin経由でRESTへ到達し、pluginは固定GETのみを実行 | 成功経路確認。障害時にHubが直接RESTへfallbackしない実運用確認は未実施 |
 
@@ -40,7 +40,7 @@ PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 | ST-10 operator docs | 実装・文書レビューのみ | 実hostでの手順確認・rollback演習は未実施 |
 | ST-11 health observer | PASS (unit/static) | health unit testsを含むPython suite 14/14成功。実Connect readiness/observer deploymentは未実施 |
 | ST-12..ST-14 Compose secrets/network/bus | PASS (static) | Python Compose contract suiteと `docker-compose config` が3 siteで成功。Connect serviceは起動していない |
-| ST-15 Hub-to-plugin MCP contract | CI skip 1件 | Node suite 25件中24 pass、0 fail、1 skip。PP2 Hub sourceはprivateでConnect projectのCI job token inbound allowlist未登録。過去のWindows scratch snapshot実行は別証拠で、最新CIのpass扱いにはしない |
+| ST-15 Hub-to-plugin MCP contract | CIは1件skip。ローカルはPASS | MR pipelineではPP2 Hub sourceがprivateでConnect projectのCI job token inbound allowlist未登録のためskip。2026-10-19のローカル新規fixtureではPP2固定source全5 moduleを照合し、`npm run check` と `npm test` 25/25（skip 0）を確認。CI skipをCI passに読み替えない |
 | ST-16 output secret hygiene | PASS (mock) | 実データを使わないMCP mock testsが成功。PP2 Hub integrationは上記の理由でCI skip |
 | ST-17 CI configuration alignment | PASS | MR pipelineは既存の3 site専用self-hosted runner tagsに固定され、shared/他site fallbackなし。新しいmanual/protected必須gateは追加していない |
 
@@ -63,12 +63,12 @@ ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情
 
 ## Environment and CI status
 
-- Latest verified source/CI commit: `1d8a628b7e304d6f064987f6c76de25c716abb37`; pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) succeeded.
+- Latest MR head and CI commit: `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7`; pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438) succeeded. Detailed source validation is in pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) for implementation/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37`.
 - `site-appv4`, `site-ubutsu2`, and `site-oyama-wsl` all succeeded on the existing non-shared self-hosted runners. The job tag for MainUbutsu2 is `ubutsu2`; `main-ubutsu2` is the Runner description.
 - Node.js v24.22.0 checks passed on all sites: `npm run check`; `npm test` reports 25 total, 24 pass, 0 fail, 1 skipped. The skip is the PP2 Hub source integration only.
 - Python suite reports 14/14 on all sites. Official Docker Compose standalone v5.6.0 checksum and binary verification passed; `docker-compose -f deploy/docker/compose.yaml config` exited successfully. No daemon or service was started.
 - PP2 project 87779895 is private. Read-only Job Token inspection showed inbound scope limited to the allowlist, which contains only PP2 itself; Connect project 87779016 is not on it. No cross-project source fetch was attempted, no credentials were created, and no allowlist/scope was changed. The integration test remains skipped until PP2 grants read-only repository access to the Connect CI job token and the pipeline user has read access.
-- Previous Windows scratch results and the prior Ubutsu2 WSL Service E_ACCESSDENIED report are historical local checks, not evidence for this GitLab CI run. No alternate credentials or elevation were used to reach WSL.
+- On 2026-10-19, a fresh task-workspace PP2 snapshot was checked against all five files at pinned PP2 commit `f4871b58624d975be9737d1327390b4ebdb311fc`. `npm run check` passed and `npm test` passed 25/25 with 0 skipped; the Hub → local stdio plugin → mock Connect REST test ran with synthetic test data. This local mock result is not CI evidence, an official Ubutsu2 clone test, deployment, or live authentication. The earlier Ubutsu2 WSL Service E_ACCESSDENIED remains unresolved; no alternate credentials or elevation were used.
 - 1Password secret/token values, credential files, and Vault item data were not retrieved, displayed, or committed. No Connect authentication, deployment, or 3-site live verification occurred.
 
 ## 5段階設計成果
