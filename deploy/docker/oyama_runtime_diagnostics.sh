@@ -115,7 +115,20 @@ if [ "$docker_available" -eq 1 ]; then
   printf 'DOCKER_CONTAINERS_RUNNING=%s\n' "$(clean_field "$running_count")"
   printf 'DOCKER_ROOT_DIR=%s\n' "$(clean_field "$docker_root")"
 
-inspect_format='{{.Name}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.HostConfig.RestartPolicy.Name}}|{{.RestartCount}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{with index .NetworkSettings.Ports "8080/tcp"}}{{range .}}{{.HostIp}}:{{.HostPort}},{{end}}{{else}}none{{end}}|{{range .Mounts}}{{if eq .Destination "/home/opuser/.op/data"}}{{.Type}};{{.Name}};{{.Destination}};{{.RW}};{{.Source}}{{end}}{{end}}'
+inspect_value() {
+  docker inspect --type container --format "$1" "$expected_container" 2>"$tmpdir/docker-inspect.err"
+}
+inspect_error_reason() {
+  if grep -Eiq 'permission denied|access denied|operation not permitted' "$tmpdir/docker-inspect.err"; then
+    printf 'permission_denied'
+  elif grep -Eiq 'no such (object|container)|not found' "$tmpdir/docker-inspect.err"; then
+    printf 'not_found'
+  elif grep -Eiq 'template parsing error|error parsing template|template:' "$tmpdir/docker-inspect.err"; then
+    printf 'format_error'
+  else
+    printf 'other_error'
+  fi
+}
 container_count=0
 for service in connect-api connect-sync; do
   case "$service" in
@@ -141,24 +154,104 @@ for service in connect-api connect-sync; do
     continue
   fi
   printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=matched\n'
-  if ! row="$(docker inspect --type container --format "$inspect_format" "$expected_container" 2>"$tmpdir/docker-inspect.err")"; then
-    if grep -Eiq 'permission denied|access denied|operation not permitted' "$tmpdir/docker-inspect.err"; then
-      inspect_reason=permission_denied
-    elif grep -Eiq 'no such (object|container)|not found' "$tmpdir/docker-inspect.err"; then
-      inspect_reason=not_found
-    elif grep -Eiq 'template parsing error|error parsing template|template:' "$tmpdir/docker-inspect.err"; then
-      inspect_reason=format_error
-    else
-      inspect_reason=other_error
-    fi
-    printf 'COMPOSE_CONTAINER_INSPECT=%s\n' "$inspect_reason"
+  if ! inspected_name="$(inspect_value '{{.Name}}')"; then
+    printf 'COMPOSE_CONTAINER_INSPECT=%s\n' "$(inspect_error_reason)"
     diagnostic_failed=1
     continue
   fi
-  IFS='|' read -r name image state health restart_policy restart_count compose_service compose_project api_bindings data_mount <<<"$row"
-  inspected_name="${name#/}"
-  if [ "$inspected_name" != "$expected_container" ] || [ "$compose_service" != "$service" ]; then
+  inspected_name="${inspected_name#/}"
+  if [ "$inspected_name" != "$expected_container" ]; then
     printf 'COMPOSE_CONTAINER_NAME_RESOLUTION=inspect_metadata_mismatch\n'
+    diagnostic_failed=1
+    continue
+  fi
+  if ! image="$(inspect_value '{{.Config.Image}}')" ||
+     ! state="$(inspect_value '{{.State.Status}}')" ||
+     ! health="$(inspect_value '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')" ||
+     ! restart_policy="$(inspect_value '{{.HostConfig.RestartPolicy.Name}}')" ||
+     ! restart_count="$(inspect_value '{{.RestartCount}}')" ||
+     ! ports_json="$(inspect_value '{{json .NetworkSettings.Ports}}')" ||
+     ! mounts_json="$(inspect_value '{{json .Mounts}}')"; then
+    printf 'COMPOSE_CONTAINER_INSPECT=%s\n' "$(inspect_error_reason)"
+    diagnostic_failed=1
+    continue
+  fi
+  if ! api_bindings="$(python3 - "$ports_json" <<'PY'
+import json
+import re
+import sys
+try:
+    ports = json.loads(sys.argv[1])
+    if not isinstance(ports, dict):
+        raise ValueError("invalid ports")
+    bindings = ports.get("8080/tcp")
+    if bindings is None:
+        print("none")
+    elif isinstance(bindings, list):
+        output = []
+        for item in bindings:
+            if not isinstance(item, dict):
+                raise ValueError("invalid binding")
+            host_ip = item.get("HostIp")
+            host_port = item.get("HostPort")
+            if not isinstance(host_ip, str) or not re.fullmatch(r"[A-Fa-f0-9:.]{1,64}", host_ip):
+                raise ValueError("invalid address")
+            if not isinstance(host_port, str) or not re.fullmatch(r"[0-9]{1,5}", host_port):
+                raise ValueError("invalid port")
+            output.append(f"{host_ip}:{host_port}")
+        print(",".join(output) if output else "none")
+    else:
+        raise ValueError("invalid port list")
+except Exception:
+    print("invalid")
+    sys.exit(1)
+PY
+  )"; then
+    printf 'COMPOSE_PORT_INSPECTION=invalid\n'
+    diagnostic_failed=1
+    continue
+  fi
+  if ! data_mount="$(python3 - "$mounts_json" <<'PY'
+import json
+import re
+import sys
+try:
+    mounts = json.loads(sys.argv[1])
+    if not isinstance(mounts, list):
+        raise ValueError("invalid mounts")
+    matches = [mount for mount in mounts if isinstance(mount, dict) and mount.get("Destination") == "/home/opuser/.op/data"]
+    if len(matches) > 1:
+        raise ValueError("ambiguous mount")
+    if not matches:
+        print("")
+    else:
+        mount = matches[0]
+        mount_type = mount.get("Type")
+        mount_name = mount.get("Name") or ""
+        mount_destination = mount.get("Destination")
+        mount_rw = mount.get("RW")
+        mount_source = mount.get("Source") or ""
+        if mount_type not in {"bind", "volume", "tmpfs", "npipe", "cluster"}:
+            raise ValueError("invalid mount type")
+        if not isinstance(mount_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{0,128}", mount_name):
+            raise ValueError("invalid mount name")
+        if not isinstance(mount_rw, bool) or not isinstance(mount_source, str):
+            raise ValueError("invalid mount attributes")
+        if mount_source.startswith("/mnt/") or mount_source.startswith("//") or re.match(r"^[A-Za-z]:/", mount_source):
+            source_kind = "windows_mount"
+        elif mount_source.startswith("/home/"):
+            source_kind = "linux_home"
+        elif mount_source.startswith("/var/lib/docker/") or mount_source.startswith("/var/snap/docker/"):
+            source_kind = "linux_docker_data"
+        else:
+            source_kind = "other"
+        print(f"{mount_type};{mount_name};{mount_destination};{str(mount_rw).lower()};{source_kind}")
+except Exception:
+    print("invalid")
+    sys.exit(1)
+PY
+  )"; then
+    printf 'CONNECT_DATA_MOUNT_INSPECTION=invalid\n'
     diagnostic_failed=1
     continue
   fi
@@ -166,8 +259,7 @@ for service in connect-api connect-sync; do
   printf 'COMPOSE_CONTAINER_INSPECT=available\n'
   printf 'COMPOSE_CONTAINER_NAME=%s\n' "$(clean_field "$inspected_name")"
   printf 'COMPOSE_CONTAINER_IMAGE=%s\n' "$(clean_field "$image")"
-  printf 'COMPOSE_SERVICE=%s\n' "$(clean_field "$compose_service")"
-  printf 'COMPOSE_PROJECT=%s\n' "$(clean_field "$compose_project")"
+  printf 'COMPOSE_SERVICE=%s\n' "$(clean_field "$service")"
   printf 'COMPOSE_STATE=%s\n' "$(clean_field "$state")"
   printf 'COMPOSE_HEALTH=%s\n' "$(clean_field "$health")"
   printf 'COMPOSE_RESTART_POLICY=%s\n' "$(clean_field "$restart_policy")"
@@ -176,13 +268,7 @@ for service in connect-api connect-sync; do
   if [ -z "$data_mount" ]; then
     printf 'CONNECT_DATA_MOUNT=not_found\n'
   else
-    IFS=';' read -r mount_type mount_name mount_destination mount_rw mount_source <<<"$data_mount"
-    case "$mount_source" in
-      /mnt/*|//*|[A-Za-z]:/*) mount_source_kind=windows_mount ;;
-      /home/*) mount_source_kind=linux_home ;;
-      /var/lib/docker/*|/var/snap/docker/*) mount_source_kind=linux_docker_data ;;
-      *) mount_source_kind=other ;;
-    esac
+    IFS=';' read -r mount_type mount_name mount_destination mount_rw mount_source_kind <<<"$data_mount"
     printf 'CONNECT_DATA_MOUNT_TYPE=%s\n' "$(clean_field "$mount_type")"
     printf 'CONNECT_DATA_MOUNT_NAME=%s\n' "$(clean_field "$mount_name")"
     printf 'CONNECT_DATA_MOUNT_DESTINATION=%s\n' "$(clean_field "$mount_destination")"
