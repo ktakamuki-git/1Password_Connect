@@ -1,9 +1,9 @@
 services:
   connect-api:
-    image: 1password/connect-api:1.8.3
+    image: ghcr.io/1password/connect-api:1.8.3@sha256:a0cefa9fb93999b1ca67325ec3a79b38f3d3803a0790a6ec6630d4657896a54f
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${CONNECT_API_HOST_PORT:-8080}:8080"
     environment:
       OP_SESSION: /run/secrets/connect_credentials
       OP_BUS_PORT: "11223"
@@ -16,7 +16,7 @@ services:
       - connect-sync
 
   connect-sync:
-    image: 1password/connect-sync:1.8.3
+    image: ghcr.io/1password/connect-sync:1.8.3@sha256:5b6dcfa57e86f44b4d8a766b0edbf0321c519a9b6d327ed0a79d8583b6c7bfb5
     restart: unless-stopped
     environment:
       OP_SESSION: /run/secrets/connect_credentials
