@@ -1,0 +1,7 @@
+node_modules/
+.scratch-pp2/
+.scratch-connect-project/
+.venv/
+.env
+.env.*
+!.env.example

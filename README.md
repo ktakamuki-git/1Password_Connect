@@ -15,14 +15,14 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 ```
 cd existing_repo
-git remote add origin https://gitlab.com/ktakamuki_wsl/app/1Password_Connect.git
+git remote add origin https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect.git
 git branch -M main
 git push -uf origin main
 ```
 
 ## Integrate with your tools
 
-* [Set up project integrations](https://gitlab.com/ktakamuki_wsl/app/1Password_Connect/-/settings/integrations)
+* [Set up project integrations](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/settings/integrations)
 
 ## Collaborate with your team
 

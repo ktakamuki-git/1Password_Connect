@@ -1,0 +1,70 @@
+services:
+  connect-api:
+    image: ghcr.io/1password/connect-api:1.8.3@sha256:a0cefa9fb93999b1ca67325ec3a79b38f3d3803a0790a6ec6630d4657896a54f
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CONNECT_API_HOST_PORT:-8080}:8080"
+    environment:
+      OP_SESSION: /run/secrets/connect_credentials
+      OP_BUS_PORT: "11223"
+      OP_BUS_PEERS: "connect-sync:11223"
+    secrets:
+      - connect_credentials
+    volumes:
+      - connect-data:/home/opuser/.op/data
+    depends_on:
+      - connect-sync
+
+  connect-sync:
+    image: ghcr.io/1password/connect-sync:1.8.3@sha256:5b6dcfa57e86f44b4d8a766b0edbf0321c519a9b6d327ed0a79d8583b6c7bfb5
+    restart: unless-stopped
+    environment:
+      OP_SESSION: /run/secrets/connect_credentials
+      OP_BUS_PORT: "11223"
+      OP_BUS_PEERS: "connect-api:11223"
+    secrets:
+      - connect_credentials
+    volumes:
+      - connect-data:/home/opuser/.op/data
+
+  connect-healthcheck:
+    profiles:
+      - monitoring
+    image: python:3.14.8-alpine3.24
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    command:
+      - python
+      - -c
+      - import signal; signal.pause()
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CONNECT_API_HEALTH_URL: "http://connect-api:8080/health"
+    volumes:
+      - type: bind
+        source: ./connect_healthcheck.py
+        target: /opt/connect_healthcheck.py
+        read_only: true
+    depends_on:
+      connect-api:
+        condition: service_started
+      connect-sync:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "/opt/connect_healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+secrets:
+  connect_credentials:
+    file: "${CONNECT_CREDENTIALS_FILE:?Set CONNECT_CREDENTIALS_FILE to an approved local file path}"
+
+volumes:
+  connect-data: {}
