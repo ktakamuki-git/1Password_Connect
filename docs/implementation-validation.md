@@ -2,9 +2,9 @@
 
 更新日: 2026-10-19  
 検証対象: GitLab project 87779016 / branch codex/1password-connect-design-review  
-実装commit: 7c581762daf031c8e320b61af82bfd47fb336698  
-draft MR: !1  
-最後に成功したCI: head `a6e7bc11ea157010b2a8a982968af788bcfc4a0a` / pipeline `2961989963`; 初回実装CI: `1d8a628b7e304d6f064987f6c76de25c716abb37` / pipeline `2960546091`  
+検証済み実装コードbaseline: 8944001073f63f1d97b3f4be2b4e4742bdea72c9  
+MR: !1  
+最新の成功CI code baseline: `8944001073f63f1d97b3f4be2b4e4742bdea72c9` / pipeline `2962249187`; current branch later adds documentation only.  
 PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 
 ## 結果の要約
@@ -14,6 +14,15 @@ PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 唯一のskipはPP2 Hub sourceを必要とするloopback integration testです。固定PP2 source commitは `f4871b58624d975be9737d1327390b4ebdb311fc`。PP2 project 87779895はprivateで、read-only確認ではinbound CI job token allowlistが有効、許可対象は同project自身のみでした。Connect project 87779016からのcloneを試したり、Job Token scopeを拡張したり、別credentialを作成していません。GitLab公式仕様ではprivate project repositoryをCI jobからcloneするにはjob tokenの対象project allowlistと実行ユーザーのアクセス権が必要です（[CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/)）。このintegrationをCIで実行する最低条件は、PP2 project側でConnect project 87779016のjob tokenによるrepository readを許可し、pipeline実行ユーザーにもread権限があることです。write/push権限は不要です。現在のCIは `PP2_HUB_ROOT` を設定せず、該当testをskipする構成を維持しています。
 
 このCI結果はhost-independentなmock/static試験です。Connectの実credential/token取得、実API認証、deployment、3拠点実runtime動作は行っていません。Windowsの本task workspaceで行った、PP2固定sourceを使うローカルmock integration（下記）はCIとは別の証拠であり、正式Ubutsu2 local cloneでの検証とも区別します。
+
+## 最新のコード検証・集約案レビュー（2026-10-19）
+
+- 実装検証済みコードbaselineは `8944001073f63f1d97b3f4be2b4e4742bdea72c9`。GitLab pipeline [2962249187](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2962249187) は成功し、`site-appv4`、`site-ubutsu2`、`site-oyama-wsl` が各対応する既存non-shared runnerで成功した。
+- 各jobのNode.js v24.22.0 `npm run check` が成功。Node suiteは25件中24 pass、0 fail、1 skip。Python suiteは15/15。Docker Compose v5.6.0 checksumと `docker compose config` も成功した。
+- 唯一のskipはprivate PP2 Hub sourceを使うCI integration testである。これは権限を変更せずskipを維持したもの。Composeサービス、1Password認証、デプロイ、実site接続は実施していない。
+- 続くcommit `24f9a3339f02d7d187a1ee47adfed9cd40dfaacc` は `docs/oyama-centralization-proposal.md` の追加のみであることをGitLab commit diffで確認した。pipelineは `[skip ci]` によりskipされ、実装コードはbaseline以後変更されていない。
+- Oyama集約案はPP2 plugin専用の**提案**としてレビューした。対象をPP2に限定し、他consumer/route、credential、ネットワークをこの文書だけで変更せず、既存の私設route・TLS・token供給が確認できなければ実装を停止する条件は明確である。現時点ではremote route/CA/trust/ACLとHub secretRefs providerが未確認であり、集約を設計・実装・配備承認済みとは扱わない。既存の五段階設計は3site-local構成のレビュー済みbaselineとして保持する。
+- この追記は検証結果と提案境界の記録のみであり、追加CIやruntime変更は行っていない。
 
 ## MCP test traceability
 
