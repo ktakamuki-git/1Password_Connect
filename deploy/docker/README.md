@@ -9,7 +9,7 @@ This manifest is a one-site Connect runtime reference for Oyama only. The user c
 3. Copy `.env.example` to an untracked `.env` and set `CONNECT_CREDENTIALS_FILE` to that local file path. This is only a path reference; do not put a Connect token or credentials JSON content in the environment file.
 4. Review the chosen Connect release and host-specific file permissions, firewall, and app route before starting.
 
-The top-level Compose secret mounts the Oyama credential file read-only to both Connect containers at `/run/secrets/connect_credentials`;
+The top-level Compose secret mounts the Oyama credential file read-only to both Connect containers at `/run/secrets/connect_credentials`.
 
 ## Network and data
 
