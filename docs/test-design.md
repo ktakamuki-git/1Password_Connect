@@ -107,7 +107,7 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
-- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。文書追記後に自動生成されたpipeline 2961990853は、CI停止指示に従ってcancelした。文書追記前の成功pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
+- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。文書追記commitで自動生成されたpipeline 2961989963では停止指示の適用前に3 site jobがsuccessで完了し、後続pipeline 2961990853はCI停止指示に従ってcancelした。文書追記前の成功pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
 - Hub相当client→本repo local stdio plugin→mock Connect RESTをcontract boundaryとし、PP2 core非変更・既存認証/OS権限を維持する。success/error/notificationとログを公開metadata onlyで検証し、secret-returning tool/human approvalを置かない。Connect RESTは通常plugin backendであり、Hubのplugin迂回fallbackだけを拒否する。指定route変更は許容・記録し、無指定の他site切替は拒否する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
