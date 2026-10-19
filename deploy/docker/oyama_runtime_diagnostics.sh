@@ -75,41 +75,47 @@ printf 'GITLAB_RUNNER_UNIT_ENABLED=%s\n' "$(unit_state gitlab-runner is-enabled)
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
+diagnostic_failed=0
+docker_available=1
 if ! command -v docker >/dev/null 2>&1; then
   printf 'DOCKER_CLIENT=missing\n'
-  exit 20
+  docker_available=0
+  diagnostic_failed=1
 fi
 
 docker_info_format='{{.Name}}|{{.ServerVersion}}|{{.OperatingSystem}}|{{.Architecture}}|{{.KernelVersion}}|{{.CgroupDriver}}|{{.ContainersRunning}}|{{.DockerRootDir}}'
-if docker info --format "$docker_info_format" >"$tmpdir/docker-info" 2>"$tmpdir/docker-info.err"; then
-  printf 'DOCKER_ACCESS=available\n'
-else
-  if grep -Eiq 'permission denied|access denied|operation not permitted' "$tmpdir/docker-info.err"; then
-    printf 'DOCKER_ACCESS=permission_denied\n'
+if [ "$docker_available" -eq 1 ]; then
+  if docker info --format "$docker_info_format" >"$tmpdir/docker-info" 2>"$tmpdir/docker-info.err"; then
+    printf 'DOCKER_ACCESS=available\n'
   else
-    printf 'DOCKER_ACCESS=unavailable\n'
+    if grep -Eiq 'permission denied|access denied|operation not permitted' "$tmpdir/docker-info.err"; then
+      printf 'DOCKER_ACCESS=permission_denied\n'
+    else
+      printf 'DOCKER_ACCESS=unavailable\n'
+    fi
+    docker_available=0
+    diagnostic_failed=1
   fi
-  exit 21
 fi
 
-docker_context=unknown
-if docker context show >"$tmpdir/docker-context" 2>/dev/null; then
-  docker_context="$(cat "$tmpdir/docker-context")"
-fi
-printf 'DOCKER_CONTEXT=%s\n' "$(clean_field "$docker_context")"
+if [ "$docker_available" -eq 1 ]; then
+  docker_context=unknown
+  if docker context show >"$tmpdir/docker-context" 2>/dev/null; then
+    docker_context="$(cat "$tmpdir/docker-context")"
+  fi
+  printf 'DOCKER_CONTEXT=%s\n' "$(clean_field "$docker_context")"
 
-IFS='|' read -r daemon_name daemon_version daemon_os daemon_arch daemon_kernel cgroup_driver running_count docker_root <"$tmpdir/docker-info"
-printf 'DOCKER_DAEMON_NAME=%s\n' "$(clean_field "$daemon_name")"
-printf 'DOCKER_SERVER_VERSION=%s\n' "$(clean_field "$daemon_version")"
-printf 'DOCKER_OS=%s\n' "$(clean_field "$daemon_os")"
-printf 'DOCKER_ARCH=%s\n' "$(clean_field "$daemon_arch")"
-printf 'DOCKER_KERNEL=%s\n' "$(clean_field "$daemon_kernel")"
-printf 'DOCKER_CGROUP_DRIVER=%s\n' "$(clean_field "$cgroup_driver")"
-printf 'DOCKER_CONTAINERS_RUNNING=%s\n' "$(clean_field "$running_count")"
-printf 'DOCKER_ROOT_DIR=%s\n' "$(clean_field "$docker_root")"
+  IFS='|' read -r daemon_name daemon_version daemon_os daemon_arch daemon_kernel cgroup_driver running_count docker_root <"$tmpdir/docker-info"
+  printf 'DOCKER_DAEMON_NAME=%s\n' "$(clean_field "$daemon_name")"
+  printf 'DOCKER_SERVER_VERSION=%s\n' "$(clean_field "$daemon_version")"
+  printf 'DOCKER_OS=%s\n' "$(clean_field "$daemon_os")"
+  printf 'DOCKER_ARCH=%s\n' "$(clean_field "$daemon_arch")"
+  printf 'DOCKER_KERNEL=%s\n' "$(clean_field "$daemon_kernel")"
+  printf 'DOCKER_CGROUP_DRIVER=%s\n' "$(clean_field "$cgroup_driver")"
+  printf 'DOCKER_CONTAINERS_RUNNING=%s\n' "$(clean_field "$running_count")"
+  printf 'DOCKER_ROOT_DIR=%s\n' "$(clean_field "$docker_root")"
 
 inspect_format='{{.Id}}|{{.Name}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.HostConfig.RestartPolicy.Name}}|{{.RestartCount}}|{{if index .Config.Labels "com.docker.compose.service"}}{{index .Config.Labels "com.docker.compose.service"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project"}}{{index .Config.Labels "com.docker.compose.project"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project.working_dir"}}{{index .Config.Labels "com.docker.compose.project.working_dir"}}{{else}}none{{end}}|{{if index .Config.Labels "com.docker.compose.project.config_files"}}{{index .Config.Labels "com.docker.compose.project.config_files"}}{{else}}none{{end}}|{{with index .NetworkSettings.Ports "8080/tcp"}}{{range .}}{{.HostIp}}:{{.HostPort}},{{end}}{{else}}none{{end}}|{{range .Mounts}}{{if eq .Destination "/home/opuser/.op/data"}}{{.Type}};{{.Name}};{{.Destination}};{{.RW}};{{.Source}}{{end}}{{end}}'
-diagnostic_failed=0
 container_count=0
 for service in connect-api connect-sync; do
   printf 'COMPOSE_SERVICE_QUERY=%s\n' "$service"
@@ -164,6 +170,9 @@ for service in connect-api connect-sync; do
 done
 if [ "$container_count" -eq 0 ]; then
   printf 'CONNECT_COMPOSE_CONTAINERS=none\n'
+fi
+else
+  printf 'CONNECT_COMPOSE_INSPECTION=skipped_docker_access_unavailable\n'
 fi
 
 health_url='http://127.0.0.1:8080/health'
