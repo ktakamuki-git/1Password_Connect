@@ -33,7 +33,7 @@
 | ST-16 | MCP output secret hygiene | success/protocol error/tool error/notificationのHub向け出力とlog/audit/artifactは定義済み公開metadataのみ。raw `content`/`structuredContent`、secret、credential本文、tokenを漏らさず、secret-returning toolなし |
 | ST-17 | CI configuration alignment | job trigger/protectionは既存GitLab設定と本人指示に整合し、新たなmanual/protected必須gateを追加しない。site jobは対応するself-hosted runner tagへ固定し、shared/他site fallbackなし。設定が未準備なら利用不可として記録 |
 
-MR head pipeline 2960553438は3 site runner jobすべて成功した。実装/CI pipeline 2960546091ではNode tests 24 pass/0 fail/1 skip、Python tests 14/14、Compose config成功を確認し、skipはprivate PP2 sourceへのCI read access不足による。別に、task workspace内のexact-source snapshotでNode checkと25/25 tests（skipなし）を実行し、Hub integrationのlocal mock経路を確認した。ST-09 routingは `appv4` / `ubutsu2` / `oyama-wsl` tagで確認。ST-07の実Vault scope metadataとendpoint/resource/volume、ST-08の実host identityは未検証。証拠区分とCI access条件はdocs/implementation-validation.mdに記録する。
+文書追記前に最後に成功したMR head pipeline 2960553438は3 site runner jobすべて成功した。実装/CI pipeline 2960546091ではNode tests 24 pass/0 fail/1 skip、Python tests 14/14、Compose config成功を確認し、skipはprivate PP2 sourceへのCI read access不足による。別に、task workspace内のexact-source snapshotでNode checkと25/25 tests（skipなし）を実行し、Hub integrationのlocal mock経路を確認した。ST-09 routingは `appv4` / `ubutsu2` / `oyama-wsl` tagで確認。ST-07の実Vault scope metadataとendpoint/resource/volume、ST-08の実host identityは未検証。証拠区分とCI access条件はdocs/implementation-validation.mdに記録する。
 
 ## 2.1 Hub相当clientから本repo pluginへのMCP unit/contract tests
 
@@ -106,7 +106,7 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
-- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。最新head pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
+- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。文書追記後に自動生成されたpipeline 2961990853は、CI停止指示に従ってcancelを要求した。文書追記前の成功pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
 - Hub相当client→本repo local stdio plugin→mock Connect RESTをcontract boundaryとし、PP2 core非変更・既存認証/OS権限を維持する。success/error/notificationとログを公開metadata onlyで検証し、secret-returning tool/human approvalを置かない。Connect RESTは通常plugin backendであり、Hubのplugin迂回fallbackだけを拒否する。指定route変更は許容・記録し、無指定の他site切替は拒否する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
