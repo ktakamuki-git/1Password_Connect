@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from jsonschema import Draft202012Validator, ValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_PATH = ROOT / "deploy" / "docker" / "compose.yaml"
+sys.path.insert(0, str(ROOT / "deploy" / "docker"))
+from compose_wrapper import resolve_api_host_port
 
 
 class ComposeContractTests(unittest.TestCase):
@@ -38,15 +41,38 @@ class ComposeContractTests(unittest.TestCase):
     def test_official_connect_images_use_same_pinned_release(self) -> None:
         api = self.services["connect-api"]["image"]
         sync = self.services["connect-sync"]["image"]
-        self.assertEqual(api, "1password/connect-api:1.8.3")
-        self.assertEqual(sync, "1password/connect-sync:1.8.3")
+        self.assertEqual(
+            api,
+            "ghcr.io/1password/connect-api:1.8.3@sha256:a0cefa9fb93999b1ca67325ec3a79b38f3d3803a0790a6ec6630d4657896a54f",
+        )
+        self.assertEqual(
+            sync,
+            "ghcr.io/1password/connect-sync:1.8.3@sha256:5b6dcfa57e86f44b4d8a766b0edbf0321c519a9b6d327ed0a79d8583b6c7bfb5",
+        )
         self.assertNotIn("latest", api)
         self.assertEqual(api.rsplit(":", 1)[1], sync.rsplit(":", 1)[1])
 
+    def test_api_host_port_defaults_and_override_are_validated(self) -> None:
+        mapping = self.services["connect-api"]["ports"][0]
+        self.assertEqual(mapping, "127.0.0.1:${CONNECT_API_HOST_PORT:-8080}:8080")
+        for raw, expected in [(None, 8080), ("", 8080), ("18080", 18080), ("65535", 65535)]:
+            with self.subTest(raw=raw):
+                port = resolve_api_host_port(raw)
+                self.assertEqual(port, expected)
+                self.assertEqual(f"127.0.0.1:{port}:8080", f"127.0.0.1:{expected}:8080")
+
+        for invalid in ("0", "65536", "tcp", "80:90", "+8080", " 8080", "８０８０"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    resolve_api_host_port(invalid)
+
     def test_only_api_is_bound_to_host_loopback(self) -> None:
-        self.assertEqual(self.services["connect-api"]["ports"], ["127.0.0.1:8080:8080"])
         self.assertNotIn("ports", self.services["connect-sync"])
         self.assertNotIn("ports", self.services["connect-healthcheck"])
+        self.assertEqual(
+            self.services["connect-healthcheck"]["environment"]["CONNECT_API_HEALTH_URL"],
+            "http://connect-api:8080/health",
+        )
 
     def test_api_and_sync_share_one_project_local_data_volume(self) -> None:
         expected = "connect-data:/home/opuser/.op/data"
