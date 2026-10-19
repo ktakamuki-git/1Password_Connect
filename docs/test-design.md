@@ -7,7 +7,8 @@
 1. **単体/static tests:** manifest/設定の構文と静的制約をローカルrepoで検証。
 2. **配備確認:** 各hostでcontainer、volume、API/Sync healthが成立することを確認。
 3. **3拠点実動作:** 各siteのAPIが認証し、同じVaultを読み取れることを確認。
-4. **Self-hosted CI:** 3 site専用runnerのsite tagでpipelineを実行し、shared runnerへfallbackしない。最新MR head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` のpipeline 2960553438では3 site jobが成功。Hub sourceを使う1件はPP2 projectがprivateで、Connect projectのinbound job-token許可がないためskip。\n5. **Exact-source local integration:** task workspace内の新規PP2 source snapshotでHub → local stdio plugin → mock Connect RESTを実行。2026-10-19に固定PP2 commitの5 source module照合後、Node checkと25/25 testsが成功した。これはCI/Ubutsu2 clone/live環境の試験とは分け、詳細結果をdocs/implementation-validation.mdに記録する。
+4. **Self-hosted CI:** 3 site専用runnerのsite tagでpipelineを実行し、shared runnerへfallbackしない。文書追記前に最後に成功したMR head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7` のpipeline 2960553438では3 site jobが成功。Hub sourceを使う1件はPP2 projectがprivateで、Connect projectのinbound job-token許可がないためskip。
+5. **Exact-source local integration:** task workspace内の新規PP2 source snapshotでHub → local stdio plugin → mock Connect RESTを実行。2026-10-19に固定PP2 commitの5 source module照合後、Node checkと25/25 testsが成功した。これはCI/Ubutsu2 clone/live環境の試験とは分け、詳細結果をdocs/implementation-validation.mdに記録する。
 
 以下はテスト計画であり、実施結果はdocs/implementation-validation.mdに記録する。GitLab CIとtask workspace内のexact-source local mock integrationは実行済みだが、正式Ubutsu2 local clone、配備、3拠点live試験は未確認。
 
@@ -106,7 +107,7 @@ secret value、Connect credentials JSON、Vault item value、Bearer headerは記
 - static, deployment, 3-site runtime testを分離した。host-independent templateの静的検証は実機アクセスを要件としない。
 - token値を使ったテストを設計しつつ、値の取得表示を避ける手順にした。
 - 本番Vaultへwrite/deleteを送る試験を排除し、scope metadataでread-onlyを検証する。
-- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。文書追記後に自動生成されたpipeline 2961990853は、CI停止指示に従ってcancelを要求した。文書追記前の成功pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
+- CIのsite jobは対応する既存non-shared runner tagへ固定し、shared runnerを使わない。文書追記後に自動生成されたpipeline 2961990853は、CI停止指示に従ってcancelした。文書追記前の成功pipeline 2960553438で3 job成功。PP2 Hub integrationはCIでprivate source read access不足によりskip。一方、task workspaceのPP2 pinned-source fixtureで全5 module一致を確認し、25/25 local testsを実行。job-token allowlist変更やcredential作成は行わない。
 - Hub相当client→本repo local stdio plugin→mock Connect RESTをcontract boundaryとし、PP2 core非変更・既存認証/OS権限を維持する。success/error/notificationとログを公開metadata onlyで検証し、secret-returning tool/human approvalを置かない。Connect RESTは通常plugin backendであり、Hubのplugin迂回fallbackだけを拒否する。指定route変更は許容・記録し、無指定の他site切替は拒否する。
 - API heartbeat、承認済み初回認証GET、dependency readiness、Vault identity、アプリ切替を順番に分けた。初回 `TOKEN_NEEDED` とobserver unhealthyをpending状態として扱う。
 - local repositoryが開けない場合はlocal testを未実施と記録する。実機未接続でも可能なsecret-free template checkとsiteごとのruntime試験を混同しない。
