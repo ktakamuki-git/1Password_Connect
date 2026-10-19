@@ -50,7 +50,10 @@ class ComposeContractTests(unittest.TestCase):
             "ghcr.io/1password/connect-sync:1.8.3@sha256:5b6dcfa57e86f44b4d8a766b0edbf0321c519a9b6d327ed0a79d8583b6c7bfb5",
         )
         self.assertNotIn("latest", api)
-        self.assertEqual(api.rsplit(":", 1)[1], sync.rsplit(":", 1)[1])
+        api_release = api.split("@", 1)[0].rsplit(":", 1)[1]
+        sync_release = sync.split("@", 1)[0].rsplit(":", 1)[1]
+        self.assertEqual(api_release, sync_release)
+        self.assertNotEqual(api.rsplit("@sha256:", 1)[1], sync.rsplit("@sha256:", 1)[1])
 
     def test_api_host_port_defaults_and_override_are_validated(self) -> None:
         mapping = self.services["connect-api"]["ports"][0]
