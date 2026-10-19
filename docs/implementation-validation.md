@@ -7,9 +7,9 @@ MR: !1
 最新の成功CI code baseline: `8944001073f63f1d97b3f4be2b4e4742bdea72c9` / pipeline `2962249187`; current branch later adds documentation only.  
 PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 
-## 結果の要約
+## 過去時点の結果記録（最新状態は上記追記を参照）
 
-最後に完了したpipeline [2961989963](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2961989963)（head `a6e7bc11ea157010b2a8a982968af788bcfc4a0a`）は、3 site jobが既存non-shared self-hosted runnerで成功しました。文書追記commitで自動生成されたpipeline 2961989963は、停止指示の適用前に3 site jobがsuccessで完了しました。後続pipeline 2961990853はCI停止指示に従ってcancelされました。2026-10-19 07:25 UTCに指示が更新され、自前RunnerのみCI許可・その他は禁止となりました。Node/Python/Composeの詳細な実行内訳は実装commit `1d8a628b7e304d6f064987f6c76de25c716abb37` のpipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) に記録されています。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
+この過去記録の作成時点で最後に完了していたpipeline [2961989963](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2961989963)（head `a6e7bc11ea157010b2a8a982968af788bcfc4a0a`）は、3 site jobが既存non-shared self-hosted runnerで成功しました。文書追記commitで自動生成されたpipeline 2961989963は、停止指示の適用前に3 site jobがsuccessで完了しました。後続pipeline 2961990853はCI停止指示に従ってcancelされました。2026-10-19 07:25 UTCに指示が更新され、自前RunnerのみCI許可・その他は禁止となりました。Node/Python/Composeの詳細な実行内訳は実装commit `1d8a628b7e304d6f064987f6c76de25c716abb37` のpipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) に記録されています。site tag `appv4`、`ubutsu2`、`oyama-wsl` の3 jobが、それぞれ対応する既存non-shared self-hosted runnerで成功しています。各jobでNode.js v24.22.0の `npm run check` が成功し、Node suiteは25件中24 pass、0 fail、1 skip、Python suiteは14/14成功、Docker Compose v5.6.0のchecksum検証と `docker-compose config` が成功しました。Compose daemonやserviceは起動していません。
 
 唯一のskipはPP2 Hub sourceを必要とするloopback integration testです。固定PP2 source commitは `f4871b58624d975be9737d1327390b4ebdb311fc`。PP2 project 87779895はprivateで、read-only確認ではinbound CI job token allowlistが有効、許可対象は同project自身のみでした。Connect project 87779016からのcloneを試したり、Job Token scopeを拡張したり、別credentialを作成していません。GitLab公式仕様ではprivate project repositoryをCI jobからcloneするにはjob tokenの対象project allowlistと実行ユーザーのアクセス権が必要です（[CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/)）。このintegrationをCIで実行する最低条件は、PP2 project側でConnect project 87779016のjob tokenによるrepository readを許可し、pipeline実行ユーザーにもread権限があることです。write/push権限は不要です。現在のCIは `PP2_HUB_ROOT` を設定せず、該当testをskipする構成を維持しています。
 
@@ -53,7 +53,7 @@ PP2 fixture pin: `f4871b58624d975be9737d1327390b4ebdb311fc`
 | ST-16 output secret hygiene | PASS (mock) | 実データを使わないMCP mock testsが成功。PP2 Hub integrationは上記の理由でCI skip |
 | ST-17 CI configuration alignment | PASS | MR pipelineは既存の3 site専用self-hosted runner tagsに固定され、shared/他site fallbackなし。新しいmanual/protected必須gateは追加していない |
 
-ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情報・実credential・実API・実Connect serviceを必要とする配備計画は別区分であり、下記のとおり未実施です。
+ST-01..ST-17はこの過去時点のCI/static記録です。最新の検証結果は冒頭の追記を参照してください。host固有情報・実credential・実API・実Connect serviceを必要とする配備計画は別区分であり、下記のとおり未実施です。
 
 ## Deployment plan traceability
 
@@ -70,7 +70,7 @@ ST-01..ST-17の最新CI/static statusは上表を正とします。host固有情
 | DP-09 deployment evidence | 未実施 |
 | DP-10 Hub/plugin/site route | Hub→plugin→mock RESTのみ。実3拠点経路は未実施 |
 
-## Environment and CI status
+## 過去時点のEnvironment and CI status
 
 - Last completed successful CI before documentation-only updates: head `9cdefdcab446d64ed71d5e5febb76c8a4162b8f7`, pipeline [2960553438](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960553438). Detailed source validation is in pipeline [2960546091](https://gitlab.com/ktakamuki_wsl/pc-platform/plugin/1Password_Connect/-/pipelines/2960546091) for implementation/CI commit `1d8a628b7e304d6f064987f6c76de25c716abb37`.
 - `site-appv4`, `site-ubutsu2`, and `site-oyama-wsl` all succeeded on the existing non-shared self-hosted runners. The job tag for MainUbutsu2 is `ubutsu2`; `main-ubutsu2` is the Runner description.
