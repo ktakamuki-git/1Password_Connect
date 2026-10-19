@@ -1,0 +1,38 @@
+{
+  "$schema": "./connect-site-profile.schema.json",
+  "schema_version": 1,
+  "site_id": "<site-id>",
+  "registration_name": "CredentialMCP",
+  "deployment": {
+    "runtime": "<select-after-host-inventory>",
+    "connect_release": "<pin-approved-official-release>",
+    "api_image": "docker.io/1password/connect-api:<same-connect-release>",
+    "sync_image": "docker.io/1password/connect-sync:<same-connect-release>",
+    "api_replicas": 1,
+    "sync_replicas": 1
+  },
+  "credentials": {
+    "credentials_file_reference": "<approved-secret-file-handoff-reference>",
+    "api_token_reference": "<application-secret-store-reference>",
+    "secret_values_present": false
+  },
+  "vault": {
+    "identity": "<confirm-existing-authorized-vault>",
+    "read_only_scope": "<verify-from-account-metadata>"
+  },
+  "data": {
+    "api_and_sync_share_same_site_encrypted_volume": true,
+    "cross_site_shared_volume": false
+  },
+  "network": {
+    "api_exposure": "<select-after-network-inventory>",
+    "public_unauthenticated_api": false,
+    "sync_egress": "<confirm-after-site-egress-review>",
+    "port_mapping": "<select-after-runtime-and-network-review>"
+  },
+  "verification": {
+    "api_health": "pending",
+    "sync_health": "pending",
+    "api_authentication": "pending"
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Secret-free 1Password Connect site profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "site_id",
+    "registration_name",
+    "deployment",
+    "credentials",
+    "vault",
+    "data",
+    "network",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "site_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registration_name": {
+      "const": "CredentialMCP"
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime",
+        "connect_release",
+        "api_image",
+        "sync_image",
+        "api_replicas",
+        "sync_replicas"
+      ],
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "connect_release": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "const": "latest"
+          }
+        },
+        "api_image": {
+          "type": "string",
+          "pattern": "^docker\\.io/1password/connect-api:.+$"
+        },
+        "sync_image": {
+          "type": "string",
+          "pattern": "^docker\\.io/1password/connect-sync:.+$"
+        },
+        "api_replicas": {
+          "const": 1
+        },
+        "sync_replicas": {
+          "const": 1
+        }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "credentials_file_reference",
+        "api_token_reference",
+        "secret_values_present"
+      ],
+      "properties": {
+        "credentials_file_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "api_token_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secret_values_present": {
+          "const": false
+        }
+      }
+    },
+    "vault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "read_only_scope"
+      ],
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read_only_scope": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_and_sync_share_same_site_encrypted_volume",
+        "cross_site_shared_volume"
+      ],
+      "properties": {
+        "api_and_sync_share_same_site_encrypted_volume": {
+          "const": true
+        },
+        "cross_site_shared_volume": {
+          "const": false
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_exposure",
+        "public_unauthenticated_api",
+        "sync_egress",
+        "port_mapping"
+      ],
+      "properties": {
+        "api_exposure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_unauthenticated_api": {
+          "const": false
+        },
+        "sync_egress": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port_mapping": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_health",
+        "sync_health",
+        "api_authentication"
+      ],
+      "properties": {
+        "api_health": {
+          "enum": [
+            "pending",
+            "pass",
+            "fail"
+          ]
+        },
+        "sync_health": {
+          "enum": [
+            "pending",
+            "pass",
+            "fail"
+          ]
+        },
+        "api_authentication": {
+          "enum": [
+            "pending",
+            "pass",
+            "fail"
+          ]
+        }
+      }
+    },
+    "$schema": {
+      "const": "./connect-site-profile.schema.json"
+    }
+  }
+}
