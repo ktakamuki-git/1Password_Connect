@@ -1,8 +1,14 @@
 workflow:
   rules:
+    # Runtime diagnostics are opt-in on API pipelines only.
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_BRANCH == "codex/1password-connect-design-review" && $CONNECT_RUNTIME_DIAGNOSTICS == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_BRANCH == "codex/1password-connect-design-review"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "codex/1password-connect-design-review"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
       when: never
+    - if: '$CI_COMMIT_BRANCH == "codex/1password-connect-design-review"'
     - if: '$CI_COMMIT_BRANCH'
 
 stages:
@@ -10,6 +16,10 @@ stages:
 
 .static-mock-site:
   stage: verify
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_BRANCH == "codex/1password-connect-design-review"'
+      when: never
+    - when: on_success
   script:
     - |
       set -euo pipefail
@@ -84,3 +94,16 @@ site-ubutsu2:
 site-oyama-wsl:
   extends: .static-mock-site
   tags: [oyama-wsl]
+
+oyama-runtime-diagnostics:
+  stage: verify
+  tags: [oyama-wsl]
+  variables:
+    CI_DEBUG_TRACE: "false"
+    CI_DEBUG_SERVICES: "false"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_BRANCH == "codex/1password-connect-design-review" && $CONNECT_RUNTIME_DIAGNOSTICS == "true"'
+    - when: never
+  script:
+    - bash -n deploy/docker/oyama_runtime_diagnostics.sh
+    - bash deploy/docker/oyama_runtime_diagnostics.sh
