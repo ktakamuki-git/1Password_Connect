@@ -1,23 +1,23 @@
-# 実装計画: 3拠点へCredentialMCPを配備
+# 実装計画: Oyama単一Connect runtimeと3拠点Hub連携
 
 ## 前提
 
-既存repoはGitLab project 87779016、branch mainに初期README雛形だけがある。実装用branchには設計docsを追加し、mainは変更しない。目標CIはsiteごと1台のnon-shared self-hosted runnerにjobを固定し、shared runnerは使わない。2026-10-18時点のproject settingsはjobs/build/group runners disabledであり、runner tagもproject accessも未準備のためこのsnapshotでpipelineを起動しない。runner/tag/access settingsは別担当に委ね、本作業で変更しない。
+Connect runtimeはOyamaにAPI/Sync 1組で集約済み（本人確認）。APPv4・Ubutsu2・OyamaはHub deployment targetであり、Connectを3拠点へ再配備しない。This repository CI is static/mock verification only; Hub owner handles Hub deployment. The old 2026-10-18 runner snapshot below is historical, not current readiness.
 
 設計段階の終了時点で親が独立レビューする。レビュー後に実装へ進む。既存Connect登録/トークン値、Vault内容、host secretsは取得しない。
 
 ## Phase 1 — 実行先を特定
 
-1. APPv4のVM102 IDと現在の起動状態をnodepveの正式管理手段で確認する。実OS/release、RAM/CPU/disk、container runtime/Kubernetes、network/IP/DNS、firewall/proxy、既存workload/port/volumeを確認。
-2. MainUbutsu2は正式なremote-wsl:Ubutsu2 worksiteを使用できるか確認し、本人指定の対応repo/pathのみを探す。Windows executorからwsl --listを再実行せず、別資格情報/昇格で拒否を迂回しない。対応フォルダが正式remote上で見つからない場合はローカルrepoとlocal test未実施として扱う。
-3. MiniPC-Oyamaはユーザー報告によりWSL利用を前提とし、正式remote管理経路でWSL distribution名、container/Kubernetes runtime、自動起動、network情報を確認する。Windows native構成を仮定しない。
-4. Host inventoryはsite固有値の設定と実配備の前提とする。秘密値を含まないhost-independent templateの作成は妨げない。APPv4向けのsite設定/配備前にVM102/APPv4を名前とIDの両方で確認する。
+1. Connect runtime hostはOyamaだけ。既存API/Sync pairとDocker状態は本人報告で確認済みだが、これはauth/route proofではない。新たなhost management経路を使わない。
+2. MainUbutsu2はHub deployment targetであり、Connect deployment targetではない。既存のHub→Oyama Connect route/authだけを確認し、Windows executorからWSL/SSHを呼ばない。
+3. MiniPC-OyamaはConnect runtime hostとHub deployment targetの両方。ユーザーが既存Connect/API Syncとpost-fix `docker ps`を確認済み。追加のruntime操作/再起動はしない。
+4. `runner_host.inventory` 等の旧APPv3 management actionは配備前提にしない。Hub deploy jobが既存Runner上で対象host/site identityを検証し、ConnectはOyamaのみとする。
 
 ## Phase 2 — 1Password認証前提を確認
 
 1. 1Password UI/authorized APIでCredentialMCP登録が1つ、既存トークンとVault scopeが想定通りかmetadataだけ確認する。token値・credentials file本文・item secretは表示しない。Connect初回起動に必要なcredentials fileはConnect自身から取得できないため、独立した安全なhandoffが必要。
 2. Automation/ChromeVaultのread-only表示は既存設定情報として記録するが、Connect APIで認証済みの証明とは扱わない。
-3. 公式1Password Communityの回答者が2 clusterで同一 `1password-credentials.json` を使った自身の例と、公式Helm deploymentのreplica/credentials Secret定義を別の根拠として記録する。これをCredentialMCP登録1つ/既存credential/token再利用の設計根拠とするが、3 siteの認証成功はsite別実動作まで未確認とする。別登録やtoken発行は行わない。
+3. 公式1Password Communityの複数cluster例とHelm replica定義は設計資料に留め、3つの独立Connect serverを正当化する根拠にしない。現行はOyamaの一組だけ。
 4. credential placementが必要な場合は対象siteと操作を親へ明示し、安全なhandoffを使う。OS file permission/secret storeを設定し、Git/chat/CI variable/logへ値を戻さない。
 
 ## Phase 2.1 — このrepository内の1Password plugin MCP module
@@ -26,7 +26,7 @@ PP2本体はProject ID `87779895` (`ktakamuki_wsl/pc-platform/pc_platform2`) と
 
 1. PP2 Hubがlocalstdio pluginにMCP `tools/list` を送り、実在するtool metadata/schemaを確認できる契約を実装する。Hubの既存外部認証とplugin processの既存OS identity/permissionsを使い、独自認証、caller approval、role、権限昇格を追加しない。
 2. Hubは確認済みのtool/schemaをallow-listと照合し、許可されたread-only toolだけをJSON-RPC 2.0 `tools/call` でpluginへ送る。未知tool/write/delete tool、schema外argumentは拒否する。
-3. pluginはそのcallを処理し、指定siteのConnect API REST endpointへ接続する。各siteのbackend route/bindingを確認し、本人の明示的な経路変更は許容して記録/reviewする。指定なしの他siteへのsilent switchingは行わない。RESTはplugin backendであり、Hubがpluginを迂回するfallbackではない。
+3. pluginはそのcallを処理し、各Hubから共通の既存Oyama Connect API endpointへ接続する。endpointは既存のsite configから読み、値をログへ出さない。
 4. Hub/Chat向けの成功結果、error、notificationはすべて定義済み公開metadataだけに射影する。`content` / `structuredContent` をraw pass-throughせず、secret値、credential file本文、Bearer token、secret-bearing resultを返さない。秘密値を返すtoolは作らず、追加のhuman confirmationも導入しない。許可consumer内での秘密供給はMCPの値返却経路と分ける。
 5. JSON-RPC mock contract/unit testsで、`tools/list` metadata/schema、allow-list、`tools/call` request、success/tool error/protocol error/notification、timeout、unknown/write tool拒否、metadata-only output、secret-safe logsを検証する。site routeの選択が指定siteと一致することもmockで検証する。
 6. PP2 Hubとの実接続やsite認証は、接続実装とsite route/configurationが確認された後に行う。認証情報や秘密値はテストfixture、ログ、chat、Gitに含めない。
@@ -42,22 +42,22 @@ PP2本体はProject ID `87779895` (`ktakamuki_wsl/pc-platform/pc_platform2`) と
 
 ## CI/Runner plan — site-bound execution
 
-GitLab CI/runnerの実行はユーザーの停止指示により当面起動しない。将来CIが再開された場合のsite割当案はself-hosted runnerを各siteに1台ずつ使い、tagを `appv4`、`main-ubutsu2`、`oyama-wsl` に対応させる。別site runnerやshared runnerへのfallbackはしない。job trigger/保護は既存GitLab設定と本人指示に従い、manual/protected gateを新たな必須条件として追加しない。host-local secret file referenceをrunner側で安全に供給し、credential JSONやConnect tokenをGitLab CI variable/artifactへ渡さない。
+CI verificationは既存のnon-shared self-hosted Runner tags `appv4`、`ubutsu2`、`oyama-wsl` で成功済み。これらは3 Hub targetsであり、Connect deploymentはOyamaだけ。このrepositoryはdeploy jobを持たず、Hub配備を重複実装しない。
 
-2026-10-18のrunner inventoryではnon-shared group runnerが3台online/activeだがtag listは空で、project runner listは0、`group_runners_enabled=false`。project jobs/buildsもdisabled。tag/access/settings更新は別担当の作業とし、本作業では変更しない。site別runnerの割当と利用可否は設定準備後にread-onlyで確認し、実行可能状態と本人指示を満たしてから対象jobを開始する。
+2026-10-19のmain/implementation pipelinesでは3 verification jobsが既存 non-shared Runner tags `appv4`、`ubutsu2`、`oyama-wsl`で成功済み。以前のinventory snapshot (tags empty / projects disabled) は過去状態であり、deployment permissionやruntime authを証明しない。
 
 
-## Phase 4 — hostごとのruntime設定と配備
+## Phase 4 — 既存Oyama runtime / central接続の記録
 
-1. Docker Composeを最小候補として先に用意した。各siteで `docker context show` / `docker info` を使い、実際に接続するdaemonを特定する。Docker Desktopの専用 `docker-desktop` WSL engineと、WSL distro内の独立Docker Engineは別daemonで、images/volumes/portsも分かれる。二重起動とhost port collisionを避け、各siteの現行runtimeがCompose対応か確認してから方式を選ぶ。全hostへ同じ方式を強制しない。
-2. 同じ公式Connect version/digestを固定し、API+Sync pair、同拠点のみで共有するencrypted data volume、site-local API endpoint、secret file mount、health checkを定義する。
-3. API公開範囲はアプリhost/site内だけ。Compose候補はloopback bind `127.0.0.1` だけを使い、host portはdefault 8080から変更可能、container portは8080固定とする。private network mapping/firewall allow-list、必要ならTLSを明記する。Docker Engine 28.0.0未満のlocalhost-published portのsame-L2 caveatを確認する。Public unauthenticated accessは作らない。
-4. root ignore rulesを設定し、credentials/token/cert/private keyの実値がGitに入らないようにする。既存READMEは意図的に上書きしない。
-5. 3拠点のcontainer version、vault scope、port policyを比較できる設定表と、rollback/backup/rotationの運用記述を追加する。
+1. Connect API/Sync pairは既存Oyama上の1組を維持する。このrepositoryからConnectを新規配備、再起動、移動しない。
+2. Compose/manifestは参照用のstatic contractとして扱い、今回の変更では適用しない。認証情報やdata volumeを読み取らない。
+3. APPv4、Ubutsu2、OyamaはHubの配備先であり、Hub ownerの既存Runner-based pipelineに委ねる。このrepositoryへ並行deploy jobを追加しない。
+4. 各HubからOyamaの既存Connect endpointへの経路/auth readinessは個別のread-only evidenceとして記録する。経路、listener、DNS、TLS、ACL、credentialを新設・変更しない。
+5. Connect pairのversion、vault scope、port policyはOyamaの単一runtimeについて記録し、各Hub siteについてはHub→Oyamaの経路/auth確認状態を分けて記録する。
 
-## Phase 5 — ローカル検証（GitLab CI停止中）
+## Phase 5 — ローカル検証とCI（self-hosted Runnerのみ）
 
-実際の対応local repositoryが開ける場合、GitLabへ保存したテストコードをローカルで実行し、失敗時もsecret値を出さない。MCP adapter testsはlive 1Password接続を使わず、mock transportを使う。Compose syntax validation、unit/contract testsはAPI readinessに依存しない。正式local repositoryが開けなければ未実施と記録する。GitLab CI/runnerの実行は停止指示に従い起動しない。job trigger/保護に新しいmanual/protected必須gateを追加しない。
+GitLab CIはself-hosted verification onlyで既に実行されており、shared runnerは使わない。実際の対応local repositoryが開ける場合は、保存したテストを実行しsecret値を出さない。
 
 - 実credential handoffの前に、`CONNECT_CREDENTIALS_FILE` をsecret-free dummy pathへ向ける一時env fileを用い、`python deploy/docker/compose_wrapper.py --env-file <temporary-dummy-env> config` でdefault portのCompose configを検証する。host port default/override/invalid casesは `tests/test_compose_contract.py` とwrapper unit testで確認し、override時もloopback bindとcontainer port 8080を維持する。Composeがsource fileの存在を要求する場合に限り、repo外に空の非secret placeholder fileを作る。実credentialを読ませず、`up` は実環境/credential準備後に限る。
 - `python -m pip install -r tests/requirements.txt` の後、`python -m unittest discover -s tests -v` でCompose契約/healthcheck/port validation unit testsを実行する。
@@ -70,19 +70,19 @@ GitLab CI/runnerの実行はユーザーの停止指示により当面起動し�
 
 ## Phase 6 — siteごとの配備と実動作
 
-siteのhost/runtime情報と既存credentialの独立した安全なhandoffが整った後、siteごとに配備を開始する。API readinessは配備後に得る結果であり、配備開始の前提ではない。アプリ切替はreadinessとVault identityの確認後に限る。GitLab CI/runnerは停止指示により実行しない。trigger/保護は将来再開時も既存GitLab設定と本人指示に従い、新しいmanual/protected gateを追加しない。最初はAPPv4を候補にするがVM102 identityを正式確認してからにする。次にMainUbutsu2、最後にMiniPC-Oyamaを個別配備する。
+Connect serverはOyamaに一組で稼働中（本人確認）のため、このrepositoryから再配備・再起動しない。APPv4/Ubutsu2/OyamaはHub deployment targetsで、Hub ownerの既存Runner-based deploy pipelineを使う。各siteのHub→Oyama Connect route/authのみread-onlyで確認し、不明時は接続を有効化しない。
 
-各siteで次の順序を守る:
-1. API/Sync deploymentを起動する。
-2. process/container statusとAPI `/heartbeat` を確認する。heartbeatはlivenessであり、初回同期/readinessを示さない。
-3. siteごとに承認済みsafe secret handoffを用い、既存tokenで認証付き `GET /v1/vaults` を実行して初回syncを開始する。tokenや本文をログに出さない。
-4. API `/health` のsync/sqliteがともに `ACTIVE` になるまで待つ。`TOKEN_NEEDED` / observer unhealthyだけで失敗と断定しない。
-5. Vault識別情報とread-only scopeを確認する。
-6. readinessとVault identityが確認できた後に限り、そのsite-local APIへアプリ経路を切り替える。
+各Hub siteの既存route/authをread-onlyで検証する。Connect containerを起動・再起動しない。
+1. Oyama上の既存API/Sync pairの状態をユーザー提供結果と既存read-only health evidenceで記録する。
+2. 認証を伴わないhealth checkとauthenticated API checkを区別する。
+3. 各Hubから許可済みの既存auth routeを使った `GET /v1/vaults` の可否を、Vault ID以外を出さず確認する。secret値の新規handoffやroute変更は行わない。
+4. Central Oyama API/Sync healthは一組だけ確認し、Hub siteごとのroute reachabilityは個別に記録する。
+5. Read-only scopeを確認し、token値やVault item dataは取得しない。
+6. 既存のcentral routeが確認されるまでアプリ設定を切り替えない。Hub ownerによる配備・route作業はこのrepositoryで重複実装しない。
 
-この順序で配備、heartbeat、初回認証GET、readiness、app cutoverを分けて記録する。各siteでは起動前baseline、image pull後、初回sync後、平常workload時にConnect API/Sync別とHub/plugin CPU/RAM、image/volume/log/host disk、WSL virtual disk deltaを観測する。これらはsite比較用であり、合否thresholdやapproval gateにはしない。static tests/CIはreadinessを待たずに独立実行できる（CI実行自体は停止中）。結果には読み取りscope、app route、public exposureなし、image SHA/tagを記録する。testにVault write/deleteを含めない。
+この順序で既存runtime状態、各Hubからのroute、初回認証GET、readiness、app routeを別々に記録する。
 
-三siteの実動作が全部成功するまで「完了」と報告しない。認証失敗、Sync停滞、version差、host identity不一致、public exposureの疑いがある場合はそのsiteを閉じて親に報告する。
+単一Oyama Connect runtimeの状態と各Hub siteからのroute/authを別々に確認する。
 
 
 ## Stop条件/承認handoff
@@ -91,6 +91,6 @@ siteのhost/runtime情報と既存credentialの独立した安全なhandoffが�
 
 ## 実装計画レビュー
 
-ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2本体はProject ID 87779895と確認済み。pluginはこのConnect repositoryの分離moduleとしてHub localstdioから起動し、Hub→plugin→site-local Connect RESTの呼び出し方向、PP2 core非変更、既存Hub認証/OS permissions、本人指定の経路変更、metadata-only outputを計画に反映した。現実装は `connect_list_vaults` の `GET /v1/vaults` によるVault ID/status metadataだけであり、既存consumerのitem secret取得依存を解消していない。consumer内部delivery route等は別要件が必要。secret-returning tool/新しいhuman confirmation gateや新規manual/protected gateは設けない。
+ゼロベース確認で「host/VM ID不明」「MCP tool/API contract未確認」「runner tag/project access未設定」「既存scope表示をauth成功と混同」「ローカルrepo不在」を整理した。PP2本体はProject ID 87779895と確認済み。pluginはこのConnect repositoryの分離moduleとしてHub localstdioから起動し、Hub→plugin→central Oyama Connect RESTの呼び出し方向、PP2 core非変更、既存Hub認証/OS permissions、本人指定の経路変更、metadata-only outputを計画に反映した。現実装は `connect_list_vaults` の `GET /v1/vaults` によるVault ID/status metadataだけであり、既存consumerのitem secret取得依存を解消していない。consumer内部delivery route等は別要件が必要。secret-returning tool/新しいhuman confirmation gateや新規manual/protected gateは設けない。
 
 Compose構文検証とsecret-free static CIはcredential handoff・実配備・API readinessに依存させず、dummy path referenceで先行可能とした。site deploymentは起動→heartbeat→初回認証GET→readiness→Vault identity→app cutoverの順とし、readinessは配備開始条件でなくアプリ切替条件である。per-host deploymentとsite-bound CI jobはhost/runtime、safe secret distribution、runner/tag/project accessのreadinessを別に確認し、既存GitLab設定と本人指示に従う。

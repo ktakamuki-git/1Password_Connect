@@ -1,14 +1,14 @@
-# Oyama集約案: PP2 plugin限定の要件差分
+# Oyama単一Connect backend: PP2 plugin連携の運用要件
 
-状態: **提案案**。既存の五段階設計レビューは3拠点local Connect案を対象としており、この集約案の承認・実装承認ではない。具体的なhost、URL、port、route、証明書、ACL、認証値は未確定。ネットワーク、credentials、1Password登録/権限は変更しない。
+状態: **現行方針**。本人確認によりConnect API/SyncはOyamaに1組集約済みで稼働中。APPv4/Ubutsu2/OyamaはPP2 Hubの配備先で、Connect runtimeの配備先はOyamaのみ。route/URL、TLS、ACL、認証値はこのtaskで確認・変更しない。3拠点local Connect案は旧設計であり、復活させない。
 
-## 1. 提案する最小対象
+## 1. 現行backend対象
 
 当面の対象consumerは、APPv4・MainUbutsu2・MiniPC-Oyamaで動くPP2 Hubの1Password pluginだけとする。各Hubがlocalstdioで起動するplugin processは、Hub間relayを介さず、Oyama上の同一Connect API HTTPS originへ直接REST接続する。MCP success/error/notificationは既定の公開metadataのみとし、Vault ID以外のsecret値やtokenは返さない。
 
 PP2 plugin backendとして使うConnect deploymentはOyamaに1組とする: API 1、Sync 1、同一host上の暗号化data volume 1つ。登録identityは既存CredentialMCP 1つ。登録、token、deployment、containerの数は別単位として記録する。API/Sync間ではローカルvolumeを共有するが、拠点間volume共有はしない。
 
-他アプリのConnect endpoint、credentials、route、実行方式は未確認である。提案範囲では変更しない。APPv4/MainUbutsu2上に既存Connect deploymentがあるかも確認できていないため、撤去・停止・切替を計画しない。各アプリをOyamaへ移行する要求は別途定義・レビューする。
+他アプリのConnect endpoint、credentials、route、実行方式は未確認であり、本件で変更しない。APPv4/Ubutsu2のHubはcentral Oyama APIのconsumerで、そこでConnectを追加配置・撤去・切替しない。
 
 ## 2. 現行設計からの差分
 
@@ -20,7 +20,7 @@ PP2 plugin backendとして使うConnect deploymentはOyamaに1組とする: API
 | 他consumer | 各拠点アプリもlocal APIを使う想定 | 今回は変更対象外。既存routeを推測・書換えしない |
 | route障害時 | 拠点別に独立 | Oyama Connectまたは経路停止が3拠点PP2 pluginに影響。site-local fallback/自動切替なし |
 
-「deployment 1組」はPP2 plugin backendの提案上の数であり、現在の各siteで稼働する実deployment数の確認結果ではない。
+Connect runtime 1組（API/Sync）は本人確認済みの現行Oyama構成である。各Hub siteのAPI route/auth readinessは別の未確認事項。
 
 ## 3. ネットワークとTLSの前提
 
@@ -43,7 +43,7 @@ PP2 plugin backendとして使うConnect deploymentはOyamaに1組とする: API
 - PP2 Hub sourceではsecretRefs provider未設定時にdownstreamをfail closedにする。実在するtoken供給経路は未確認であり、新規credential、provider、独自auth/approval/elevationを推測で追加しない。
 - MCPのtool inputでendpoint、site、tokenを選ばせない。通常REST callの失敗時に別siteや直接的なHub fallbackを行わない。
 
-## 5. 受け入れ条件とテスト設計の差分
+## 5. Hub integrationの受け入れ条件
 
 実装に進む前に、親による新しい段階別・全体レビューを行う。最低限、以下を五段階文書へ一貫して反映する。
 
@@ -63,4 +63,4 @@ PP2 plugin backendとして使うConnect deploymentはOyamaに1組とする: API
 - 実装計画: plugin設定変更とmock検証、route evidence収集、credential handoff/配備を分離し、後二者は未承認・未実施として残す。
 - テスト設計: 3site contextの同一origin contract、TLS/redirect negative case、Hub/plugin/mock API、現地接続を段階別に定義する。
 
-この差分案は、認証、配備、公開経路、アプリendpointを変更する指示ではない。親の独立レビューで承認されるまで、既存五段階文書やruntime配置をこの案で上書きしない。
+この文書はOyamaの既存Connect runtimeをPP2 Hubへ接続するための運用要件を記録する。認証、配備、公開経路、app endpointを変更する承認ではない。3 site Connect構成へ戻さず、未確認のroute/authは作成せずに報告する。
