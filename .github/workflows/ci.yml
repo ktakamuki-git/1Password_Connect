@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: [self-hosted, vm-infrastructure]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r tests/requirements.txt
+      - name: Unit tests
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: ShellCheck
+        run: shellcheck deploy/docker/oyama_runtime_diagnostics.sh scripts/deploy_qemu117.sh
+      - name: Verify systemd user unit
+        run: systemd-analyze --user verify deploy/systemd/user/onepassword-connect.service
