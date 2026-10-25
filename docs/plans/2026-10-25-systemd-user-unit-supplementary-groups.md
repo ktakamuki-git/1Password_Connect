@@ -2,7 +2,7 @@
 
 Date: 2026-10-25
 Branch: `fix/systemd-user-unit-supplementary-groups`
-Owner: infra (qemu/117)
+Owner: infra (vm-infrastructure)
 
 ## Problem
 
@@ -14,12 +14,12 @@ Owner: infra (qemu/117)
 SupplementaryGroups=docker
 ```
 
-A user manager (`systemd --user`) cannot set supplementary groups for a unit;
-the directive is only honoured by the system manager. When the unit is started
-without a drop-in that clears it, the unit fails to start, so the Connect API
-(and Sync) never come up.
+A user manager (`systemd --user`) cannot assign supplementary groups to a
+service. The host account must already have Docker socket access before its
+user manager starts. On vm-infrastructure, `kiyohisa` is a member of `docker`
+and the lingering user manager has Docker's GID in its group list.
 
-The service is only running on qemu/117 today because an operator added a local
+The service is running on vm-infrastructure; an operator added a local
 hot-fix drop-in,
 `~/.config/systemd/user/onepassword-connect.service.d/10-no-supplementary-groups.conf`,
 which resets the directive:
@@ -29,9 +29,9 @@ which resets the directive:
 SupplementaryGroups=
 ```
 
-That drop-in is machine-local and not tracked in the repository, so a clean
-install (for example via the self-hosted deploy workflow) re-introduces the
-broken directive.
+That drop-in is machine-local and not tracked in the repository. The source
+unit should omit the unsupported directive; group access comes from the login
+account and persists across reboot through the enabled user unit and linger.
 
 ## Change
 
@@ -62,15 +62,24 @@ type, working directory, environment, `ExecStart`/`ExecStop`, timeout and
 1. Static: run the repository unit/contract suite with `python3 -m unittest
    discover -s tests -v` (includes the new regression test).
 2. CI: the repository's `Deploy Connect (qemu/117)` GitHub Actions workflow is
-   `[self-hosted, vm-infrastructure]` only (no GitHub-hosted minutes). Run it
-   for this change and confirm the run is green.
-3. Deploy on qemu/117:
+   `[self-hosted, vm-infrastructure]` only (no GitHub-hosted minutes) and only
+   runs on `main` or manual dispatch. It was not run for this PR; the local
+   suite and live host verification below passed.
+3. Deploy on vm-infrastructure:
    - install the fixed unit to `~/.config/systemd/user/onepassword-connect.service`,
    - remove the local hot-fix drop-in
      `~/.config/systemd/user/onepassword-connect.service.d/10-no-supplementary-groups.conf`,
    - `systemctl --user daemon-reload && systemctl --user restart onepassword-connect`,
-   - confirm `GET /heartbeat` returns HTTP 200 and `GET /health` is healthy
-     (no secret values printed).
+   - confirm `GET /heartbeat` and `GET /health` return HTTP 200 and list vault
+     names only (no secret values printed).
+
+## As built
+
+Completed 2026-10-25 on `vm-infrastructure`. See
+[`../as-built/2026-10-25-onepassword-connect-systemd-user.md`](../as-built/2026-10-25-onepassword-connect-systemd-user.md)
+and
+[`../verification/2026-10-25-onepassword-connect-systemd-user.md`](../verification/2026-10-25-onepassword-connect-systemd-user.md)
+for deployed state and verification evidence.
 
 ## Out of scope
 
