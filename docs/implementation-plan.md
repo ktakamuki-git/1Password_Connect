@@ -57,6 +57,12 @@ CI verificationは既存のnon-shared self-hosted Runner tags `appv4`、`ubutsu2
 
 ## Phase 5 — ローカル検証とCI（self-hosted Runnerのみ）
 
+### GitHub Actions
+
+GitHub Actions は `.github/workflows/ci.yml` で `pull_request` と `main` への push に対して実行する。`runs-on` は repository-level self-hosted runner label `vm-infrastructure` のみを指定し、GitHub-hosted runnerを使わない。jobは既存の20 unit tests、ShellCheck、user systemd unitの `systemd-analyze --user verify` を実行する。対象repoはユーザー個人所有なのでorg runnerへ依存しない。
+
+vm-infrastructureには `vm-infrastructure-1password-connect` という専用のrepository-level runnerを置く。公式 `actions/runner` を `~/.local/share/actions-runner-1password-connect` に分離し、`github-actions-1password-connect.service` で常時待機させる。Infra_MCPのrunner設定、unit、hubには変更を加えない。登録tokenは設定時のみ使用し、systemd unitやrepositoryには保存しない。詳細は `docs/as-built/2026-10-25-github-actions-ci.md` を参照。
+
 GitLab CIはself-hosted verification onlyで既に実行されており、shared runnerは使わない。実際の対応local repositoryが開ける場合は、保存したテストを実行しsecret値を出さない。
 
 - 実credential handoffの前に、`CONNECT_CREDENTIALS_FILE` をsecret-free dummy pathへ向ける一時env fileを用い、`python deploy/docker/compose_wrapper.py --env-file <temporary-dummy-env> config` でdefault portのCompose configを検証する。host port default/override/invalid casesは `tests/test_compose_contract.py` とwrapper unit testで確認し、override時もloopback bindとcontainer port 8080を維持する。Composeがsource fileの存在を要求する場合に限り、repo外に空の非secret placeholder fileを作る。実credentialを読ませず、`up` は実環境/credential準備後に限る。
