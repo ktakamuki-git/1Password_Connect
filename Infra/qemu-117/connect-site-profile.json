@@ -1,0 +1,38 @@
+{
+  "$schema": "../../templates/connect-site-profile.schema.json",
+  "schema_version": 1,
+  "site_id": "infra-qemu117",
+  "registration_name": "CredentialMCP",
+  "deployment": {
+    "runtime": "docker-compose-systemd-user",
+    "connect_release": "1.8.3",
+    "api_image": "docker.io/1password/connect-api:1.8.3",
+    "sync_image": "docker.io/1password/connect-sync:1.8.3",
+    "api_replicas": 1,
+    "sync_replicas": 1
+  },
+  "credentials": {
+    "credentials_file_reference": "~/.config/1password-connect/1password-credentials.json",
+    "api_token_reference": "~/.config/infra-mcp/onepassword-connect.env (OP_CONNECT_TOKEN)",
+    "secret_values_present": false
+  },
+  "vault": {
+    "identity": "Automation, Chrome, PW, 仕事用 (Infra-qemu117 Connect server)",
+    "read_only_scope": "read+write per 1Password.com server registration"
+  },
+  "data": {
+    "api_and_sync_share_same_site_encrypted_volume": true,
+    "cross_site_shared_volume": false
+  },
+  "network": {
+    "api_exposure": "127.0.0.1:8080 loopback only",
+    "public_unauthenticated_api": false,
+    "sync_egress": "1Password.com (Connect Sync)",
+    "port_mapping": "127.0.0.1:8080 -> connect-api:8080"
+  },
+  "verification": {
+    "api_health": "pending",
+    "sync_health": "pending",
+    "api_authentication": "pending"
+  }
+}
